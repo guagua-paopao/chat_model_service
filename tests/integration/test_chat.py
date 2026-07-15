@@ -70,7 +70,7 @@ class ChatIntegrationTests(unittest.TestCase):
         body = response.json()
         self.assertEqual(body["citations"], [])
         self.assertEqual(body["message"]["status"], "completed")
-        self.assertIn("尚未使用企业知识", body["message"]["content"])
+        self.assertIn("S3", body["message"]["content"])
         self.assertGreater(body["usage"]["output_tokens"], 0)
 
         detail = self.client.get(
@@ -142,7 +142,7 @@ class ChatIntegrationTests(unittest.TestCase):
         ).json()
         self.assertEqual(detail["messages"][-1]["status"], "failed")
 
-    def test_knowledge_mode_is_explicitly_rejected_in_s2(self) -> None:
+    def test_knowledge_mode_is_explicitly_rejected_in_s3(self) -> None:
         conversation_id = self.conversation("no rag")
         response = self.client.post(
             "/api/v1/chat/completions",
@@ -155,7 +155,7 @@ class ChatIntegrationTests(unittest.TestCase):
             },
         )
         self.assertEqual(response.status_code, 409)
-        self.assertEqual(response.json()["code"], "KNOWLEDGE_NOT_AVAILABLE_IN_S2")
+        self.assertEqual(response.json()["code"], "KNOWLEDGE_NOT_CONNECTED_IN_S3")
 
     def test_cancel_is_idempotent_and_cross_tenant_safe(self) -> None:
         conversation_id = self.conversation("cancel")

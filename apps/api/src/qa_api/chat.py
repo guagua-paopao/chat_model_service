@@ -51,7 +51,7 @@ class QuotaLease:
 
 
 class QuotaManager:
-    """Single-process S2 guard; production replaces counters with Redis atomics."""
+    """Single-process S2/S3 guard; production replaces counters with Redis atomics."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -682,9 +682,9 @@ class ChatService:
         if knowledge_base_ids or response_mode != "general":
             raise ApiError(
                 409,
-                "KNOWLEDGE_NOT_AVAILABLE_IN_S2",
+                "KNOWLEDGE_NOT_CONNECTED_IN_S3",
                 "Knowledge mode unavailable",
-                "S2 only supports general model answers without enterprise knowledge.",
+                "S3 retrieval is debug-only and is not connected to chat answers.",
             )
         lease = await self._quotas.acquire(
             tenant_id=principal.tenant_id, user_id=principal.user_id, prompt=message

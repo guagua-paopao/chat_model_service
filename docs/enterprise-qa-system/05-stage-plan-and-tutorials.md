@@ -431,3 +431,9 @@ NFR 全部、ADM-005/006、[08](08-testing-and-evaluation.md)、[10](10-observab
 ## 5. 进度压缩原则
 
 若团队更小或只有 8–10 周，不删除安全边界和评测，而是缩小业务面：只做单场景、单渠道、2 种文件、1 个主模型+Fake Provider、固定系统角色、pgvector、Compose+一个托管预生产环境。可以延后 Kubernetes、多连接器、复杂管理台和多模型自动路由，但不能延后租户/ACL、引用、拒答、审计基础和恢复验证。
+
+## S3 实施完成记录（2026-07-16）
+
+S3 已按本计划完成合成开发基线，详细实现、接口、教学、风险和 Gate 以 [S3 证据包](s3/README.md) 为准。相对原计划的显式选择：任务真相源采用 PostgreSQL lease + outbox，而非提前引入 Celery broker；S3 vector 暂存 JSON 且检索只做 ACL 后词项调试，pgvector/hybrid 正式检索留到 S4；生产扫描强制 ClamAV，本地签名 scanner 不可作为上线控制。
+
+最终证据为 45 tests、86% 总覆盖率、Ruff/Mypy/ESLint/迁移/契约/依赖审计通过，API/Worker/Web 干净镜像构建通过，且 PostgreSQL/Redis/MinIO/OIDC/浏览器签名直传/Worker/ACL 调试检索的隔离 Compose smoke 通过。Helm CLI/集群安装、真实 S3/ClamAV/Embedding、真实文档 UAT、多 Worker 压测仍是生产阻断。

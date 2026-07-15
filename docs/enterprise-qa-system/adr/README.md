@@ -26,3 +26,14 @@
 ## ADR 状态
 
 `Proposed → Accepted → Superseded/Deprecated`。改变外部契约或安全边界前先提交 ADR；紧急事件可以先遏制，但恢复后必须补记。
+
+## S3 新增 ADR
+
+| ADR | 决策 | 状态 |
+|---|---|---|
+| [ADR-019](ADR-019-quarantine-published-object-boundary.md) | 双 bucket、预签名上传与服务端对象键 | Accepted |
+| [ADR-020](ADR-020-staged-chunks-and-atomic-publication.md) | staged chunks 与原子发布 | Accepted |
+| [ADR-021](ADR-021-database-leases-and-outbox.md) | 数据库租约任务、幂等与 outbox | Accepted |
+| [ADR-022](ADR-022-acl-before-ranking.md) | ACL 必须先于评分/top-k | Accepted |
+| [ADR-023](ADR-023-versioned-ingestion-provenance-and-hash-reuse.md) | 摄取 provenance 与受限 hash reuse | Accepted |
+| [ADR-024](ADR-024-production-ingestion-fail-fast.md) | 生产对象存储、Embedding、ClamAV fail-fast | Accepted |

@@ -26,6 +26,7 @@ def settings() -> Settings:
         dev_jwt_secret=SECRET,
         cursor_signing_key="unit-test-cursor-signing-key-value-0001",
         jwt_leeway_seconds=0,
+        fake_embedding_enabled=True,
     ).validated()
 
 

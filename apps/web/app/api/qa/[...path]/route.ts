@@ -1,7 +1,10 @@
 import { cookies, headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-const ALLOWED_PATH = /^(me|models|conversations(?:\/[0-9a-f-]{36})?|chat\/completions|messages\/[0-9a-f-]{36}\/(?:cancel|retry))$/;
+const UUID = "[0-9a-f-]{36}";
+const ALLOWED_PATH = new RegExp(
+  `^(me|models|conversations(?:/${UUID})?|chat/completions|messages/${UUID}/(?:cancel|retry)|knowledge-bases(?:/${UUID}/documents)?|documents/${UUID}(?:/versions|/upload-complete)?|ingestion-jobs/${UUID}(?:/retry)?|retrieval/search|uploads/${UUID}/content)$`,
+);
 const SAFE_METHODS = new Set(["GET", "HEAD"]);
 
 async function proxy(
@@ -33,13 +36,15 @@ async function proxy(
   const contentType = request.headers.get("content-type");
   const ifMatch = request.headers.get("if-match");
   const requestId = request.headers.get("x-request-id");
+  const idempotencyKey = request.headers.get("idempotency-key");
   if (contentType) outgoing.set("Content-Type", contentType);
   if (ifMatch) outgoing.set("If-Match", ifMatch);
   if (requestId) outgoing.set("X-Request-ID", requestId);
+  if (idempotencyKey) outgoing.set("Idempotency-Key", idempotencyKey);
   const response = await fetch(target, {
     method: request.method,
     headers: outgoing,
-    body: SAFE_METHODS.has(request.method) ? undefined : await request.text(),
+    body: SAFE_METHODS.has(request.method) ? undefined : await request.arrayBuffer(),
     cache: "no-store",
   });
   const responseHeaders = new Headers({ "Cache-Control": "no-store" });
@@ -52,5 +57,6 @@ async function proxy(
 
 export const GET = proxy;
 export const POST = proxy;
+export const PUT = proxy;
 export const PATCH = proxy;
 export const DELETE = proxy;

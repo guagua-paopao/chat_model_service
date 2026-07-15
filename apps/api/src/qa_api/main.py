@@ -22,6 +22,8 @@ from qa_api.chat import (
 from qa_api.config import Settings
 from qa_api.cursors import CursorCodec
 from qa_api.domain import ApiError, ConversationRecord, MessageRecord, Principal
+from qa_api.embedding import build_embedding_adapter
+from qa_api.ingestion import DocumentUpload, IngestionService
 from qa_api.model_gateway import build_model_gateway
 from qa_api.models import (
     CancellationResponse,
@@ -32,19 +34,41 @@ from qa_api.models import (
     ConversationListResponse,
     ConversationPatch,
     ConversationResponse,
+    DocumentAclEntry,
+    DocumentCreate,
+    DocumentDetailResponse,
+    DocumentUploadResponse,
+    DocumentVersionCreate,
+    DocumentVersionResponse,
     HealthResponse,
+    IngestionJobResponse,
+    KnowledgeBaseCreate,
+    KnowledgeBaseListResponse,
+    KnowledgeBaseResponse,
     MeResponse,
     MessageResponse,
     ModelListResponse,
     ModelSummary,
     Problem,
     ReadinessResponse,
+    RetrievalSearchRequest,
+    RetrievalSearchResponse,
     RetryRequest,
     TenantSummary,
+    UploadCompleteRequest,
+    UploadReceiptResponse,
     UsageResponse,
 )
+from qa_api.object_store import ObjectStoreError, build_object_store
 from qa_api.observability import RequestContextMiddleware, configure_logging
-from qa_api.persistence import Database
+from qa_api.persistence import (
+    Database,
+    DocumentAclRow,
+    DocumentRow,
+    DocumentVersionRow,
+    IngestionJobRow,
+    KnowledgeBaseRow,
+)
 from qa_api.repositories import (
     ConversationRepository,
     IdentityRepository,
@@ -63,6 +87,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     verifier = TokenVerifier(resolved_settings)
     cursor_codec = CursorCodec(resolved_settings.cursor_signing_key or "")
     model_gateway = build_model_gateway(resolved_settings)
+    object_store = build_object_store(resolved_settings)
+    embedding_adapter = build_embedding_adapter(resolved_settings)
     quota_manager = QuotaManager(resolved_settings)
     cancellation_registry = CancellationRegistry()
     chat_service = ChatService(
@@ -72,10 +98,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         quotas=quota_manager,
         cancellations=cancellation_registry,
     )
+    ingestion_service = IngestionService(
+        settings=resolved_settings,
+        session_factory=database.session_factory,
+        object_store=object_store,
+        embedding=embedding_adapter,
+    )
 
     @asynccontextmanager
     async def lifespan(_: FastAPI) -> AsyncIterator[None]:
         database.initialize()
+        object_store.initialize()
         with database.session_factory() as session:
             recovered = ChatRepository(session).recover_orphans()
             if recovered:
@@ -88,7 +121,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Enterprise QA API",
-        version="0.2.0-s2",
+        version="0.3.0-s3",
         openapi_url="/api/v1/openapi.json",
         docs_url="/api/v1/docs" if resolved_settings.app_env != "production" else None,
         redoc_url=None,
@@ -100,6 +133,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.cursor_codec = cursor_codec
     app.state.model_gateway = model_gateway
     app.state.chat_service = chat_service
+    app.state.object_store = object_store
+    app.state.ingestion_service = ingestion_service
     app.add_middleware(RequestContextMiddleware, settings=resolved_settings)
 
     def get_session() -> Iterator[Session]:
@@ -190,7 +225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "Database readiness check failed.",
                 retryable=True,
             ) from exc
-        return ReadinessResponse(checks={"database": "ok"})
+        return ReadinessResponse(checks={"database": "ok", "object_store": "initialized"})
 
     @app.get("/api/v1/me", response_model=MeResponse, tags=["Identity"])
     def me(principal: Annotated[Principal, Depends(get_principal)]) -> MeResponse:
@@ -221,6 +256,220 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 for route in chat_service.models()
             ]
         )
+
+    @app.post(
+        "/api/v1/knowledge-bases",
+        response_model=KnowledgeBaseResponse,
+        status_code=201,
+        tags=["Knowledge ingestion"],
+    )
+    def create_knowledge_base(
+        payload: KnowledgeBaseCreate,
+        request: Request,
+        response: Response,
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> KnowledgeBaseResponse:
+        require(principal, "qa:knowledge:write")
+        row = ingestion_service.create_knowledge_base(
+            principal=principal,
+            payload=payload,
+            request_id=request.state.request_id,
+            trace_id=request.state.trace_id,
+        )
+        response.headers["Location"] = f"/api/v1/knowledge-bases/{row.id}"
+        return _knowledge_base_response(row)
+
+    @app.get(
+        "/api/v1/knowledge-bases",
+        response_model=KnowledgeBaseListResponse,
+        tags=["Knowledge ingestion"],
+    )
+    def list_knowledge_bases(
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> KnowledgeBaseListResponse:
+        require(principal, "qa:knowledge:read")
+        return KnowledgeBaseListResponse(
+            items=[
+                _knowledge_base_response(row)
+                for row in ingestion_service.list_knowledge_bases(
+                    tenant_id=principal.tenant_id
+                )
+            ]
+        )
+
+    @app.post(
+        "/api/v1/knowledge-bases/{knowledge_base_id}/documents",
+        response_model=DocumentUploadResponse,
+        status_code=201,
+        tags=["Knowledge ingestion"],
+    )
+    def create_document(
+        knowledge_base_id: UUID,
+        payload: DocumentCreate,
+        request: Request,
+        response: Response,
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> DocumentUploadResponse:
+        require(principal, "qa:knowledge:write")
+        upload = ingestion_service.create_document(
+            principal=principal,
+            knowledge_base_id=knowledge_base_id,
+            payload=payload,
+            request_id=request.state.request_id,
+            trace_id=request.state.trace_id,
+        )
+        response.headers["Location"] = f"/api/v1/documents/{upload.document.id}"
+        return _document_upload_response(upload)
+
+    @app.post(
+        "/api/v1/documents/{document_id}/versions",
+        response_model=DocumentUploadResponse,
+        status_code=201,
+        tags=["Knowledge ingestion"],
+    )
+    def create_document_version(
+        document_id: UUID,
+        payload: DocumentVersionCreate,
+        request: Request,
+        response: Response,
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> DocumentUploadResponse:
+        require(principal, "qa:knowledge:write")
+        upload = ingestion_service.create_version(
+            principal=principal,
+            document_id=document_id,
+            payload=payload,
+            request_id=request.state.request_id,
+            trace_id=request.state.trace_id,
+        )
+        response.headers["Location"] = f"/api/v1/documents/{document_id}"
+        return _document_upload_response(upload)
+
+    @app.put(
+        "/api/v1/uploads/{version_id}/content",
+        response_model=UploadReceiptResponse,
+        tags=["Knowledge ingestion"],
+    )
+    async def receive_local_upload(
+        version_id: UUID,
+        request: Request,
+        token: Annotated[str, Query(min_length=32, max_length=4096)],
+    ) -> UploadReceiptResponse:
+        content = await request.body()
+        try:
+            ingestion_service.receive_local_upload(
+                version_id=version_id, token=token, content=content
+            )
+        except ObjectStoreError as exc:
+            status = 413 if exc.code == "UPLOAD_TOO_LARGE" else 400
+            raise ApiError(status, exc.code, "Upload rejected", exc.safe_message) from exc
+        return UploadReceiptResponse(version_id=version_id)
+
+    @app.post(
+        "/api/v1/documents/{document_id}/upload-complete",
+        response_model=IngestionJobResponse,
+        status_code=202,
+        tags=["Knowledge ingestion"],
+    )
+    def complete_document_upload(
+        document_id: UUID,
+        payload: UploadCompleteRequest,
+        request: Request,
+        response: Response,
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> IngestionJobResponse:
+        require(principal, "qa:knowledge:write")
+        try:
+            job = ingestion_service.complete_upload(
+                principal=principal,
+                document_id=document_id,
+                version_id=payload.version_id,
+                submitted_sha256=payload.sha256,
+                request_id=request.state.request_id,
+                trace_id=request.state.trace_id,
+            )
+        except ObjectStoreError as exc:
+            raise ApiError(
+                409,
+                exc.code,
+                "Upload not ready",
+                exc.safe_message,
+                retryable=True,
+            ) from exc
+        response.headers["Location"] = f"/api/v1/ingestion-jobs/{job.id}"
+        return _ingestion_job_response(job)
+
+    @app.get(
+        "/api/v1/documents/{document_id}",
+        response_model=DocumentDetailResponse,
+        tags=["Knowledge ingestion"],
+    )
+    def get_document(
+        document_id: UUID,
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> DocumentDetailResponse:
+        require(principal, "qa:knowledge:read")
+        document, acl, versions, job = ingestion_service.get_document(
+            tenant_id=principal.tenant_id, document_id=document_id
+        )
+        return _document_detail_response(document, acl, versions, job)
+
+    @app.get(
+        "/api/v1/ingestion-jobs/{job_id}",
+        response_model=IngestionJobResponse,
+        tags=["Knowledge ingestion"],
+    )
+    def get_ingestion_job(
+        job_id: UUID,
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> IngestionJobResponse:
+        require(principal, "qa:ingestion:read")
+        return _ingestion_job_response(
+            ingestion_service.get_job(tenant_id=principal.tenant_id, job_id=job_id)
+        )
+
+    @app.post(
+        "/api/v1/ingestion-jobs/{job_id}/retry",
+        response_model=IngestionJobResponse,
+        status_code=202,
+        tags=["Knowledge ingestion"],
+    )
+    def retry_ingestion_job(
+        job_id: UUID,
+        request: Request,
+        response: Response,
+        principal: Annotated[Principal, Depends(get_principal)],
+        idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+    ) -> IngestionJobResponse:
+        require(principal, "qa:ingestion:retry")
+        if idempotency_key is None:
+            raise ApiError(
+                428,
+                "IDEMPOTENCY_KEY_REQUIRED",
+                "Precondition required",
+                "Idempotency-Key is required when retrying ingestion.",
+            )
+        job = ingestion_service.retry_job(
+            principal=principal,
+            job_id=job_id,
+            idempotency_key=idempotency_key,
+            request_id=request.state.request_id,
+            trace_id=request.state.trace_id,
+        )
+        response.headers["Location"] = f"/api/v1/ingestion-jobs/{job.id}"
+        return _ingestion_job_response(job)
+
+    @app.post(
+        "/api/v1/retrieval/search",
+        response_model=RetrievalSearchResponse,
+        tags=["Retrieval debug"],
+    )
+    def debug_retrieval_search(
+        payload: RetrievalSearchRequest,
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> RetrievalSearchResponse:
+        require(principal, "qa:knowledge:read")
+        return ingestion_service.debug_search(principal=principal, payload=payload)
 
     @app.post(
         "/api/v1/conversations",
@@ -412,6 +661,109 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return await _chat_response(chat_service, prepared, payload.stream, principal)
 
     return app
+
+
+def _knowledge_base_response(row: KnowledgeBaseRow) -> KnowledgeBaseResponse:
+    return KnowledgeBaseResponse.model_validate(
+        {
+            "id": row.id,
+            "code": row.code,
+            "name": row.name,
+            "description": row.description,
+            "classification": row.classification,
+            "status": row.status,
+            "created_at": row.created_at,
+            "updated_at": row.updated_at,
+        }
+    )
+
+
+def _document_version_response(row: DocumentVersionRow) -> DocumentVersionResponse:
+    return DocumentVersionResponse.model_validate(
+        {
+            "id": row.id,
+            "version_no": row.version_no,
+            "filename": row.filename,
+            "declared_mime_type": row.declared_mime_type,
+            "detected_mime_type": row.detected_mime_type,
+            "declared_size_bytes": row.declared_size_bytes,
+            "actual_size_bytes": row.actual_size_bytes,
+            "declared_sha256": row.declared_sha256,
+            "actual_sha256": row.actual_sha256,
+            "status": row.status,
+            "parser_version": row.parser_version,
+            "chunker_version": row.chunker_version,
+            "embedding_model": row.embedding_model,
+            "page_count": row.page_count,
+            "chunk_count": row.chunk_count,
+            "token_count": row.token_count,
+            "created_at": row.created_at,
+            "published_at": row.published_at,
+        }
+    )
+
+
+def _document_upload_response(upload: DocumentUpload) -> DocumentUploadResponse:
+    return DocumentUploadResponse(
+        document_id=upload.document.id,
+        version=_document_version_response(upload.version),
+        upload_url=upload.grant.url,
+        upload_method="PUT",
+        upload_headers=upload.grant.headers,
+        upload_expires_at=upload.grant.expires_at,
+    )
+
+
+def _ingestion_job_response(row: IngestionJobRow) -> IngestionJobResponse:
+    return IngestionJobResponse.model_validate(
+        {
+            "id": row.id,
+            "document_id": row.document_id,
+            "version_id": row.version_id,
+            "status": row.status,
+            "stage": row.stage,
+            "progress": row.progress,
+            "attempt": row.attempt,
+            "max_attempts": row.max_attempts,
+            "metrics": row.metrics,
+            "error_code": row.error_code,
+            "error_detail": row.error_detail_safe,
+            "created_at": row.created_at,
+            "updated_at": row.updated_at,
+            "completed_at": row.completed_at,
+        }
+    )
+
+
+def _document_detail_response(
+    document: DocumentRow,
+    acl: list[DocumentAclRow],
+    versions: list[DocumentVersionRow],
+    job: IngestionJobRow | None,
+) -> DocumentDetailResponse:
+    return DocumentDetailResponse.model_validate(
+        {
+            "id": document.id,
+            "knowledge_base_id": document.knowledge_base_id,
+            "title": document.title,
+            "classification": document.classification,
+            "status": document.status,
+            "current_version_id": document.current_version_id,
+            "metadata": document.metadata_json,
+            "acl": [
+                DocumentAclEntry(
+                    subject_type=row.subject_type,
+                    subject_id=row.subject_id,
+                    permission="read",
+                )
+                for row in acl
+            ],
+            "versions": [_document_version_response(row) for row in versions],
+            "latest_job": _ingestion_job_response(job) if job is not None else None,
+            "created_at": document.created_at,
+            "updated_at": document.updated_at,
+        }
+    )
 
 
 def _conversation_response(record: ConversationRecord) -> ConversationResponse:

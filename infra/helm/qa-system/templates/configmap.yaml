@@ -31,3 +31,26 @@ data:
   QA_CHAT_USER_CONCURRENCY: {{ .Values.config.chatUserConcurrency | quote }}
   QA_CHAT_MAX_INPUT_TOKENS: {{ .Values.config.chatMaxInputTokens | quote }}
   QA_CHAT_MAX_OUTPUT_TOKENS: {{ .Values.config.chatMaxOutputTokens | quote }}
+  QA_OBJECT_STORE_BACKEND: {{ .Values.config.objectStoreBackend | quote }}
+  QA_OBJECT_STORE_ENDPOINT_URL: {{ .Values.config.objectStoreEndpointUrl | quote }}
+  QA_OBJECT_STORE_PUBLIC_ENDPOINT_URL: {{ .Values.config.objectStorePublicEndpointUrl | quote }}
+  QA_OBJECT_STORE_REGION: {{ .Values.config.objectStoreRegion | quote }}
+  QA_OBJECT_STORE_QUARANTINE_BUCKET: {{ .Values.config.objectStoreQuarantineBucket | quote }}
+  QA_OBJECT_STORE_PUBLISHED_BUCKET: {{ .Values.config.objectStorePublishedBucket | quote }}
+  QA_OBJECT_STORE_AUTO_CREATE_BUCKETS: "false"
+  QA_UPLOAD_PRESIGN_SECONDS: {{ .Values.config.uploadPresignSeconds | quote }}
+  QA_INGESTION_MAX_UPLOAD_BYTES: {{ .Values.config.ingestionMaxUploadBytes | quote }}
+  QA_INGESTION_MAX_ATTEMPTS: {{ .Values.config.ingestionMaxAttempts | quote }}
+  QA_INGESTION_JOB_LEASE_SECONDS: {{ .Values.config.ingestionJobLeaseSeconds | quote }}
+  QA_INGESTION_WORKER_POLL_SECONDS: {{ .Values.config.ingestionWorkerPollSeconds | quote }}
+  QA_MALWARE_SCANNER_BACKEND: {{ .Values.config.malwareScannerBackend | quote }}
+  QA_CLAMAV_HOST: {{ .Values.config.clamavHost | quote }}
+  QA_CLAMAV_PORT: {{ .Values.config.clamavPort | quote }}
+  QA_CLAMAV_TIMEOUT_SECONDS: {{ .Values.config.clamavTimeoutSeconds | quote }}
+  QA_CHUNK_MAX_TOKENS: {{ .Values.config.chunkMaxTokens | quote }}
+  QA_CHUNK_OVERLAP_TOKENS: {{ .Values.config.chunkOverlapTokens | quote }}
+  QA_FAKE_EMBEDDING_ENABLED: "false"
+  QA_EMBEDDING_PROVIDER_ENABLED: {{ .Values.config.embeddingProviderEnabled | quote }}
+  QA_EMBEDDING_PROVIDER_BASE_URL: {{ .Values.config.embeddingProviderBaseUrl | quote }}
+  QA_EMBEDDING_PROVIDER_MODEL: {{ .Values.config.embeddingProviderModel | quote }}
+  QA_EMBEDDING_DIMENSIONS: {{ .Values.config.embeddingDimensions | quote }}

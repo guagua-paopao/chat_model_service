@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Enterprise QA System API
-  version: 1.0.0
+  version: 1.3.0-s3
   description: |
     企业知识问答系统的核心契约骨架。租户从认证上下文解析，客户端不得自报 tenant_id。
     流式问答返回 text/event-stream；SSE 事件结构见外部文档 04-api-contracts.md。
@@ -276,7 +276,7 @@ paths:
       summary: Create a knowledge base
       operationId: createKnowledgeBase
       security:
-        - oauth2: [kb:write]
+        - oauth2: [qa:knowledge:write]
       requestBody:
         required: true
         content:
@@ -294,10 +294,7 @@ paths:
       summary: List knowledge bases visible to the current actor
       operationId: listKnowledgeBases
       security:
-        - oauth2: [kb:read]
-      parameters:
-        - $ref: '#/components/parameters/Limit'
-        - $ref: '#/components/parameters/Cursor'
+        - oauth2: [qa:knowledge:read]
       responses:
         '200':
           description: Page
@@ -310,17 +307,15 @@ paths:
                   items:
                     type: array
                     items: {$ref: '#/components/schemas/KnowledgeBase'}
-                  next_cursor: {type: [string, 'null']}
   /knowledge-bases/{knowledge_base_id}/documents:
     post:
       tags: [Documents]
       summary: Create a document version and a presigned upload
       operationId: createDocumentUpload
       security:
-        - oauth2: [document:write]
+        - oauth2: [qa:knowledge:write]
       parameters:
         - $ref: '#/components/parameters/KnowledgeBaseId'
-        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -334,16 +329,69 @@ paths:
               schema: {$ref: '#/components/schemas/DocumentUpload'}
         '413': {$ref: '#/components/responses/PayloadTooLarge'}
         '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+  /documents/{document_id}/versions:
+    post:
+      tags: [Documents]
+      summary: Create an immutable successor version and a presigned upload
+      operationId: createDocumentVersionUpload
+      security:
+        - oauth2: [qa:knowledge:write]
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DocumentVersionCreate'}
+      responses:
+        '201':
+          description: Immutable version and upload grant created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DocumentUpload'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /uploads/{version_id}/content:
+    put:
+      tags: [Documents]
+      summary: Local-development signed upload target; S3 deployments return a direct S3 URL
+      operationId: receiveLocalDocumentUpload
+      security: []
+      parameters:
+        - name: version_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - name: token
+          in: query
+          required: true
+          schema: {type: string, minLength: 32, maxLength: 4096}
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema: {type: string, format: binary}
+      responses:
+        '200':
+          description: Object stored in quarantine
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version_id, status]
+                properties:
+                  version_id: {$ref: '#/components/schemas/Uuid'}
+                  status: {type: string, const: uploaded}
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
   /documents/{document_id}/upload-complete:
     post:
       tags: [Documents]
       summary: Verify upload and enqueue ingestion
       operationId: completeDocumentUpload
       security:
-        - oauth2: [document:write]
+        - oauth2: [qa:knowledge:write]
       parameters:
         - $ref: '#/components/parameters/DocumentId'
-        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -369,7 +417,7 @@ paths:
       summary: Get document metadata and latest job state
       operationId: getDocument
       security:
-        - oauth2: [document:read]
+        - oauth2: [qa:knowledge:read]
       parameters:
         - $ref: '#/components/parameters/DocumentId'
       responses:
@@ -379,28 +427,13 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Document'}
         '404': {$ref: '#/components/responses/NotFound'}
-    delete:
-      tags: [Documents]
-      summary: Make a document unavailable and begin policy-driven deletion
-      operationId: deleteDocument
-      security:
-        - oauth2: [document:write]
-      parameters:
-        - $ref: '#/components/parameters/DocumentId'
-        - $ref: '#/components/parameters/IdempotencyKey'
-      responses:
-        '202':
-          description: Deletion accepted
-          content:
-            application/json:
-              schema: {$ref: '#/components/schemas/JobSummary'}
-  /jobs/{job_id}:
+  /ingestion-jobs/{job_id}:
     get:
       tags: [Operations]
       summary: Get an asynchronous job
       operationId: getJob
       security:
-        - oauth2: [document:read]
+        - oauth2: [qa:ingestion:read]
       parameters:
         - $ref: '#/components/parameters/JobId'
       responses:
@@ -410,13 +443,13 @@ paths:
             application/json:
               schema: {$ref: '#/components/schemas/Job'}
         '404': {$ref: '#/components/responses/NotFound'}
-  /jobs/{job_id}/retry:
+  /ingestion-jobs/{job_id}/retry:
     post:
       tags: [Operations]
       summary: Retry a retryable failed job
       operationId: retryJob
       security:
-        - oauth2: [document:write]
+        - oauth2: [qa:ingestion:retry]
       parameters:
         - $ref: '#/components/parameters/JobId'
         - $ref: '#/components/parameters/IdempotencyKey'
@@ -433,7 +466,7 @@ paths:
       summary: Debug search within the actor's authorized scope
       operationId: searchKnowledge
       security:
-        - oauth2: [qa:search]
+        - oauth2: [qa:knowledge:read]
       requestBody:
         required: true
         content:
@@ -493,11 +526,10 @@ components:
           scopes:
             qa:ask: Ask questions and manage own conversations
             qa:feedback: Submit feedback
-            qa:search: Use authorized retrieval debug API
-            kb:read: Read knowledge-base metadata
-            kb:write: Manage knowledge bases
-            document:read: Read document metadata and jobs
-            document:write: Upload and manage documents
+            qa:knowledge:read: Read knowledge metadata and use ACL-filtered debug retrieval
+            qa:knowledge:write: Create knowledge bases and immutable document versions
+            qa:ingestion:read: Read ingestion job status
+            qa:ingestion:retry: Retry failed ingestion jobs
   parameters:
     ConversationId:
       name: conversation_id
@@ -665,7 +697,7 @@ components:
         id: {$ref: '#/components/schemas/Uuid'}
         conversation_id: {$ref: '#/components/schemas/Uuid'}
         role: {type: string, enum: [user, assistant]}
-        content: {type: string}
+        content: {type: [string, 'null']}
         content_format: {type: string, enum: [text, markdown, json], default: markdown}
         status: {type: string, enum: [pending, streaming, completed, failed, cancelled, blocked]}
         sequence_no: {type: integer, minimum: 1}
@@ -743,114 +775,149 @@ components:
       allOf:
         - $ref: '#/components/schemas/KnowledgeBaseCreate'
         - type: object
-          required: [id, status, knowledge_version, created_at, updated_at]
+          required: [id, status, created_at, updated_at]
           properties:
             id: {$ref: '#/components/schemas/Uuid'}
-            status: {type: string, enum: [active, archived, reindexing]}
-            knowledge_version: {type: integer, minimum: 1}
+            status: {type: string, enum: [active, archived]}
             created_at: {$ref: '#/components/schemas/Timestamp'}
             updated_at: {$ref: '#/components/schemas/Timestamp'}
     AclEntry:
       type: object
       additionalProperties: false
-      required: [principal_type, principal_id, permission]
+      required: [subject_type, subject_id, permission]
       properties:
-        principal_type: {type: string, enum: [user, group, role]}
-        principal_id: {$ref: '#/components/schemas/Uuid'}
-        permission: {type: string, enum: [read, manage]}
+        subject_type: {type: string, enum: [user, group, role]}
+        subject_id: {type: string, minLength: 1, maxLength: 128}
+        permission: {type: string, const: read}
     DocumentCreate:
       type: object
       additionalProperties: false
       required: [title, filename, mime_type, size_bytes, sha256, classification, acl]
       properties:
-        title: {type: string, minLength: 1, maxLength: 500}
-        filename: {type: string, minLength: 1, maxLength: 512}
+        title: {type: string, minLength: 1, maxLength: 300}
+        filename: {type: string, minLength: 1, maxLength: 255}
         mime_type:
           type: string
           enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain, text/markdown]
-        size_bytes: {type: integer, minimum: 1, maximum: 52428800}
+        size_bytes: {type: integer, minimum: 1, maximum: 104857600}
         sha256: {$ref: '#/components/schemas/Sha256'}
         classification: {type: string, enum: [public, internal, confidential, restricted]}
         acl:
           type: array
-          maxItems: 500
+          minItems: 1
+          maxItems: 100
           items: {$ref: '#/components/schemas/AclEntry'}
         metadata:
           type: object
-          maxProperties: 50
+          maxProperties: 20
           additionalProperties: true
+    DocumentVersionCreate:
+      type: object
+      additionalProperties: false
+      required: [filename, mime_type, size_bytes, sha256]
+      properties:
+        filename: {type: string, minLength: 1, maxLength: 255}
+        mime_type:
+          type: string
+          enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain, text/markdown]
+        size_bytes: {type: integer, minimum: 1, maximum: 104857600}
+        sha256: {$ref: '#/components/schemas/Sha256'}
+    DocumentVersion:
+      type: object
+      required: [id, version_no, filename, declared_mime_type, declared_size_bytes, declared_sha256, status, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        version_no: {type: integer, minimum: 1}
+        filename: {type: string}
+        declared_mime_type: {type: string}
+        detected_mime_type: {type: [string, 'null']}
+        declared_size_bytes: {type: integer, minimum: 1}
+        actual_size_bytes: {type: [integer, 'null']}
+        declared_sha256: {$ref: '#/components/schemas/Sha256'}
+        actual_sha256:
+          oneOf:
+            - $ref: '#/components/schemas/Sha256'
+            - type: 'null'
+        status: {type: string, enum: [awaiting_upload, queued, processing, published, failed, archived]}
+        parser_version: {type: [string, 'null']}
+        chunker_version: {type: [string, 'null']}
+        embedding_model: {type: [string, 'null']}
+        page_count: {type: [integer, 'null']}
+        chunk_count: {type: [integer, 'null']}
+        token_count: {type: [integer, 'null']}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        published_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
     DocumentUpload:
       type: object
-      required: [document_id, version_id, status, upload]
+      required: [document_id, version, upload_url, upload_method, upload_headers, upload_expires_at]
       properties:
         document_id: {$ref: '#/components/schemas/Uuid'}
-        version_id: {$ref: '#/components/schemas/Uuid'}
-        status: {type: string, const: uploading}
-        upload:
+        version: {$ref: '#/components/schemas/DocumentVersion'}
+        upload_url: {type: string, format: uri}
+        upload_method: {type: string, const: PUT}
+        upload_headers:
           type: object
-          required: [method, url, expires_at, required_headers]
-          properties:
-            method: {type: string, const: PUT}
-            url: {type: string, format: uri}
-            expires_at: {$ref: '#/components/schemas/Timestamp'}
-            required_headers:
-              type: object
-              additionalProperties: {type: string}
+          additionalProperties: {type: string}
+        upload_expires_at: {$ref: '#/components/schemas/Timestamp'}
     Document:
       type: object
-      required: [id, knowledge_base_id, title, status, classification, metadata, created_at, updated_at]
+      required: [id, knowledge_base_id, title, status, classification, metadata, acl, versions, created_at, updated_at]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         knowledge_base_id: {$ref: '#/components/schemas/Uuid'}
         title: {type: string}
-        status: {type: string, enum: [draft, processing, ready, archived, deleting, deleted, failed]}
+        status: {type: string, enum: [awaiting_upload, processing, ready, failed, archived]}
         classification: {type: string, enum: [public, internal, confidential, restricted]}
         current_version_id:
           oneOf:
             - $ref: '#/components/schemas/Uuid'
             - type: 'null'
         metadata: {type: object, additionalProperties: true}
+        acl:
+          type: array
+          items: {$ref: '#/components/schemas/AclEntry'}
+        versions:
+          type: array
+          items: {$ref: '#/components/schemas/DocumentVersion'}
+        latest_job:
+          oneOf:
+            - $ref: '#/components/schemas/Job'
+            - type: 'null'
         created_at: {$ref: '#/components/schemas/Timestamp'}
         updated_at: {$ref: '#/components/schemas/Timestamp'}
     JobSummary:
-      type: object
-      required: [job_id, resource_id, status, stage]
-      properties:
-        job_id: {$ref: '#/components/schemas/Uuid'}
-        resource_id: {$ref: '#/components/schemas/Uuid'}
-        status: {type: string, enum: [pending, running, retrying, succeeded, failed, cancelled, dead_letter]}
-        stage: {type: string, enum: [scan, parse, chunk, embed, index, publish, delete, evaluate]}
+      $ref: '#/components/schemas/Job'
     Job:
-      allOf:
-        - $ref: '#/components/schemas/JobSummary'
-        - type: object
-          required: [resource_type, progress, attempt, max_attempts, metrics, created_at, updated_at]
-          properties:
-            resource_type: {type: string, enum: [document_version, document, evaluation]}
-            progress: {type: number, minimum: 0, maximum: 100}
-            attempt: {type: integer, minimum: 0}
-            max_attempts: {type: integer, minimum: 1}
-            metrics: {type: object, additionalProperties: true}
-            error:
-              oneOf:
-                - $ref: '#/components/schemas/JobError'
-                - type: 'null'
-            created_at: {$ref: '#/components/schemas/Timestamp'}
-            updated_at: {$ref: '#/components/schemas/Timestamp'}
-    JobError:
       type: object
-      required: [code, message, retryable]
+      required: [id, document_id, version_id, status, stage, progress, attempt, max_attempts, metrics, created_at, updated_at]
       properties:
-        code: {type: string}
-        message: {type: string}
-        retryable: {type: boolean}
+        id: {$ref: '#/components/schemas/Uuid'}
+        document_id: {$ref: '#/components/schemas/Uuid'}
+        version_id: {$ref: '#/components/schemas/Uuid'}
+        status: {type: string, enum: [queued, running, completed, failed, dead_letter]}
+        stage: {type: string, enum: [queued, scanning, parsing, chunking, embedding, publishing, completed]}
+        progress: {type: integer, minimum: 0, maximum: 100}
+        attempt: {type: integer, minimum: 0}
+        max_attempts: {type: integer, minimum: 1}
+        metrics: {type: object, additionalProperties: true}
+        error_code: {type: [string, 'null']}
+        error_detail: {type: [string, 'null']}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+        completed_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
     SearchRequest:
       type: object
       additionalProperties: false
-      required: [query, knowledge_base_ids]
+      required: [query, kb_ids]
       properties:
-        query: {type: string, minLength: 1, maxLength: 8000}
-        knowledge_base_ids:
+        query: {type: string, minLength: 1, maxLength: 1000}
+        kb_ids:
           type: array
           minItems: 1
           maxItems: 10
@@ -864,7 +931,7 @@ components:
           additionalProperties: true
     SearchHit:
       type: object
-      required: [chunk_id, document_id, document_version_id, document_title, section_path, scores, metadata]
+      required: [chunk_id, document_id, document_version_id, document_title, score, section_path]
       properties:
         chunk_id: {$ref: '#/components/schemas/Uuid'}
         document_id: {$ref: '#/components/schemas/Uuid'}
@@ -876,23 +943,17 @@ components:
           type: array
           items: {type: string}
         content: {type: string}
-        scores:
-          type: object
-          properties:
-            vector: {type: [number, 'null']}
-            keyword: {type: [number, 'null']}
-            rerank: {type: [number, 'null']}
-        metadata: {type: object, additionalProperties: true}
+        score: {type: number, minimum: 0, maximum: 1}
     SearchResponse:
       type: object
-      required: [request_id, retrieval_run_id, hits, took_ms]
+      required: [items, total_candidates, acl_filtered, stage]
       properties:
-        request_id: {type: string}
-        retrieval_run_id: {$ref: '#/components/schemas/Uuid'}
-        hits:
+        items:
           type: array
           items: {$ref: '#/components/schemas/SearchHit'}
-        took_ms: {type: integer, minimum: 0}
+        total_candidates: {type: integer, minimum: 0}
+        acl_filtered: {type: boolean, const: true}
+        stage: {type: string, const: debug_only_not_connected_to_chat}
     Problem:
       type: object
       required: [type, title, status, code, detail, request_id, retryable]

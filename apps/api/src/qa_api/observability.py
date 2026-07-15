@@ -57,7 +57,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         request.state.trace_id = trace_id
 
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self._settings.max_request_bytes:
+        request_limit = (
+            self._settings.ingestion_max_upload_bytes
+            if request.method == "PUT" and request.url.path.startswith("/api/v1/uploads/")
+            else self._settings.max_request_bytes
+        )
+        if content_length and int(content_length) > request_limit:
             response: Response = JSONResponse(
                 status_code=413,
                 media_type="application/problem+json",

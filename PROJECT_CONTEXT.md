@@ -1,9 +1,9 @@
 # Project Context
 
-> 状态：S2 Model Gateway 与流式聊天纵切完成，生产条件待关闭  
-> 基线版本：s2-v1.0  
-> 基线日期：2026-07-15  
-> 下一阶段：S3 文档上传与摄取流水线（仅合成/批准非敏感数据）
+> 状态：S3 安全文档摄取与 ACL 调试检索纵切完成，生产条件待关闭  
+> 基线版本：s3-v1.0  
+> 基线日期：2026-07-16  
+> 下一阶段：S4 RAG 检索、引用与拒答闭环（仅合成/批准非敏感数据）
 
 ## 1. 当前目标
 
@@ -35,6 +35,9 @@
 | S2 质量与供应链 | 35 tests + 13 subtests，89.76% coverage，Python/npm 已知漏洞 0 | `s2/05-test-and-verification-report.md` |
 | S2 PostgreSQL/全栈 | migration `20260715_0002`，OIDC+BFF+SSE+账本 smoke 通过 | `s2/05-test-and-verification-report.md` |
 | S2 Gate | 条件通过 S3 合成开发；共享配额/取消、真实模型、K8s/性能仍阻断生产 | `s2/07-s2-gate-review.md` |
+| S3 安全文档摄取 | 签名直传、双 bucket、四格式解析、异步 Worker、原子发布、ACL 前置调试检索已实现 | `s3/README.md` |
+| S3 质量与全栈 | 45 tests，86% coverage；PostgreSQL/Redis/MinIO/OIDC/直传/Worker/检索 smoke 通过；Python/npm 已知漏洞 0 | `s3/05-test-and-verification-report.md` |
+| S3 Gate | 条件通过 S4 合成 RAG 开发；真实数据、IAM/KMS/ClamAV/K8s/性能仍阻断生产 | `s3/07-s3-gate-review.md` |
 
 ## 3. 已接受技术基线
 
@@ -102,12 +105,21 @@
 
 ## 8. 下一步
 
-1. 进入 S3 合成开发：安全上传、对象存储、不可变文档版本、解析/切分、异步状态机、ACL 元数据和原子索引发布。
+1. 进入 S4 合成开发：在 tenant + published + ACL 安全集合中实现 pgvector/full-text/hybrid retrieval、确定性融合、rerank、context packing、引用和证据不足拒答。
 2. Platform/API 完成 Redis 共享配额、并发租约和取消协调；在此之前禁止多副本生产。
 3. 由用户/业务方回答 S0 开放问题；仅在批准后使用真实模型沙箱和非敏感资料运行基线实验。
 4. Platform/IAM 并行补齐企业 OIDC、GitHub dev 自动部署、Helm/Kubernetes、Ingress SSE 和负载验证。
-5. S3 PR 必须引用 ADR、OpenAPI、本文件约束和 `s2/07-s2-gate-review.md` 的禁止事项。
+5. S4 变更必须引用 ADR、OpenAPI、本文件约束和 `s3/07-s3-gate-review.md` 的禁止事项；不得把 S3 debug lexical score 直接接入聊天。
 
 ## 9. 规范优先级
 
 发生冲突时依次采用：用户最新明确决定 → 已批准的变更/ADR → 本文件 → OpenAPI/数据库迁移等机器契约 → 专题设计文档 → 外部参考项目。任何改变安全边界、外部契约或数据政策的决定必须先更新 ADR 和本文件。
+
+## 10. S3 当前基线（覆盖文首旧阶段状态）
+
+- 当前版本：`s3-v1.0`，日期 2026-07-16；证据包：`docs/enterprise-qa-system/s3/`。
+- 已完成：签名直传、quarantine/published、不可变文档版本、四格式解析、结构分块、Fake/外部 Embedding Adapter、DB lease Worker、重试/dead-letter、原子 chunk 发布、user/role ACL 前置调试检索、Web 状态/错误、Compose/Helm/迁移/OpenAPI。
+- 当前 Gate：仅允许 S4 使用合成、公开或批准非敏感资料开发 hybrid retrieval、引用和拒答；聊天仍不连接知识检索。
+- ADR 基线：ADR-001 至 ADR-024。新增 ADR-019 至 ADR-024 约束对象边界、原子发布、任务租约、ACL 顺序、provenance 和生产 fail-fast。
+- 生产阻断：真实数据审批、企业 group/SCIM、ClamAV/解析沙箱、S3 IAM/KMS/lifecycle/reconciliation、真实 Embedding/Model、真实文档 UAT、多 Worker 压测、共享 Redis、Kubernetes/Ingress/NetworkPolicy/Secret、性能/观测/DR。
+- 下一阶段：S4 RAG 闭环；不得把 S3 debug lexical score 或 Fake Embedding 当生产质量证据。

@@ -25,18 +25,27 @@ h1 { margin: 10px 0 16px; font-size: clamp(38px, 7vw, 64px); letter-spacing: -.0
 .login { margin-top: 16px; text-decoration: none; }
 button:disabled { opacity: .45; cursor: not-allowed; }
 .session { margin-top: 16px; padding: 20px; border-radius: 16px; background: #edf5f0; }
+.panel { margin-top: 22px; padding-top: 18px; border-top: 1px solid #cadbd1; }
+.panel h2 { margin: 0 0 12px; font-size: 22px; }
 .chat-form { display: grid; gap: 12px; margin-top: 18px; }
 textarea { width: 100%; min-height: 108px; resize: vertical; border: 1px solid #b8ccbf; border-radius: 12px; padding: 13px; font: inherit; line-height: 1.55; }
+input, select { min-height: 42px; border: 1px solid #b8ccbf; border-radius: 10px; padding: 9px 11px; background: white; font: inherit; }
 .actions { display: flex; flex-wrap: wrap; gap: 9px; }
 button.secondary { background: white; color: #246846; border: 1px solid #9bbbaa; }
 button.ghost { background: transparent; color: #53645a; border: 1px solid #cbd8d0; }
 .answer { min-height: 145px; margin-top: 20px; padding: 18px; border: 1px solid #d7e3dc; border-radius: 14px; background: white; line-height: 1.7; white-space: pre-wrap; }
 .answer-status { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #e3eee7; color: #315541; font-size: 12px; font-weight: 750; text-transform: uppercase; }
 .answer small { color: #65746b; }
+.progress { height: 8px; margin-top: 14px; overflow: hidden; border-radius: 99px; background: #d8e4dc; }
+.progress span { display: block; height: 100%; border-radius: inherit; background: #2b8a57; transition: width .25s ease; }
+.search-form { display: grid; grid-template-columns: 1fr auto; gap: 9px; margin: 18px 0 10px; }
+.hit { margin-top: 9px; padding: 12px; border: 1px solid #d7e3dc; border-radius: 10px; background: white; }
+.hit p { margin: 7px 0 0; color: #46564c; white-space: pre-wrap; }
 .logout { margin-top: 18px; }
 
 @media (max-width: 620px) {
   main { padding: 14px; }
   .card { padding: 24px 18px; border-radius: 18px; }
   .actions button { flex: 1 1 42%; }
+  .search-form { grid-template-columns: 1fr; }
 }
