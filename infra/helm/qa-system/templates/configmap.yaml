@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: enterprise-qa-config
+data:
+  QA_APP_ENV: {{ .Values.config.appEnv | quote }}
+  QA_LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  QA_AUTO_CREATE_SCHEMA: "false"
+  QA_SEED_DEMO_DATA: "false"
+  QA_DEV_AUTH_ENABLED: "false"
+  QA_OIDC_ISSUER: {{ .Values.config.oidcIssuer | quote }}
+  QA_OIDC_AUDIENCE: {{ .Values.config.oidcAudience | quote }}
+  QA_OIDC_JWKS_URL: {{ .Values.config.oidcJwksUrl | quote }}
+  QA_OIDC_AUTHORIZATION_URL: {{ .Values.config.oidcAuthorizationUrl | quote }}
+  QA_OIDC_TOKEN_URL_INTERNAL: {{ .Values.config.oidcTokenUrl | quote }}
+  QA_OIDC_CLIENT_ID: {{ .Values.config.oidcClientId | quote }}
+  QA_WEB_PUBLIC_URL: {{ .Values.config.webPublicUrl | quote }}
+  QA_API_INTERNAL_URL: {{ .Values.config.apiInternalUrl | quote }}
+  QA_COOKIE_SECURE: "true"

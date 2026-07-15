@@ -1,0 +1,905 @@
+openapi: 3.1.0
+info:
+  title: Enterprise QA System API
+  version: 1.0.0
+  description: |
+    企业知识问答系统的核心契约骨架。租户从认证上下文解析，客户端不得自报 tenant_id。
+    流式问答返回 text/event-stream；SSE 事件结构见外部文档 04-api-contracts.md。
+servers:
+  - url: https://qa.example.com/api/v1
+    description: Production placeholder
+security:
+  - oauth2: []
+tags:
+  - name: Identity
+  - name: Conversations
+  - name: Chat
+  - name: Knowledge
+  - name: Documents
+  - name: Retrieval
+  - name: Feedback
+  - name: Operations
+paths:
+  /me:
+    get:
+      tags: [Identity]
+      summary: Get the authenticated actor and trusted tenant context
+      operationId: getCurrentActor
+      security:
+        - oauth2: [qa:ask]
+      responses:
+        '200':
+          description: Current actor; tenant is resolved from the validated identity
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Me'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /conversations:
+    post:
+      tags: [Conversations]
+      summary: Create a conversation
+      operationId: createConversation
+      security:
+        - oauth2: [qa:ask]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConversationCreate'
+      responses:
+        '201':
+          description: Created
+          headers:
+            ETag:
+              schema: {type: string}
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Conversation'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+    get:
+      tags: [Conversations]
+      summary: List the current actor's conversations
+      operationId: listConversations
+      security:
+        - oauth2: [qa:ask]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [active, archived]
+      responses:
+        '200':
+          description: Page of conversations
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/Conversation'}
+                  next_cursor: {type: [string, 'null']}
+  /conversations/{conversation_id}:
+    parameters:
+      - $ref: '#/components/parameters/ConversationId'
+    get:
+      tags: [Conversations]
+      summary: Get a conversation and a page of messages
+      operationId: getConversation
+      security:
+        - oauth2: [qa:ask]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Conversation detail
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Conversation'
+                  - type: object
+                    required: [messages]
+                    properties:
+                      messages:
+                        type: array
+                        items: {$ref: '#/components/schemas/Message'}
+                      next_cursor: {type: [string, 'null']}
+        '404': {$ref: '#/components/responses/NotFound'}
+    patch:
+      tags: [Conversations]
+      summary: Update conversation title or status
+      operationId: updateConversation
+      security:
+        - oauth2: [qa:ask]
+      parameters:
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              minProperties: 1
+              additionalProperties: false
+              properties:
+                title: {type: string, minLength: 1, maxLength: 300}
+                status: {type: string, enum: [active, archived]}
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Conversation'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+    delete:
+      tags: [Conversations]
+      summary: Soft-delete a conversation
+      operationId: deleteConversation
+      security:
+        - oauth2: [qa:ask]
+      responses:
+        '204': {description: Deleted}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /chat/completions:
+    post:
+      tags: [Chat]
+      summary: Create a grounded answer
+      description: |
+        With stream=true and Accept=text/event-stream, the body is an SSE event stream.
+        Errors after stream establishment are sent as an `error` event.
+      operationId: createChatCompletion
+      security:
+        - oauth2: [qa:ask]
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChatCompletionRequest'
+      responses:
+        '200':
+          description: SSE stream or complete response, depending on `stream`
+          content:
+            text/event-stream:
+              schema:
+                type: string
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatCompletionResponse'
+        '400': {$ref: '#/components/responses/BadRequest'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
+        '502': {$ref: '#/components/responses/UpstreamError'}
+  /messages/{message_id}/cancel:
+    post:
+      tags: [Chat]
+      summary: Cancel a pending or streaming assistant message
+      operationId: cancelMessage
+      security:
+        - oauth2: [qa:ask]
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      responses:
+        '202':
+          description: Cancellation accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [message_id, status]
+                properties:
+                  message_id: {$ref: '#/components/schemas/Uuid'}
+                  status: {type: string, const: cancelling}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /messages/{message_id}/feedback:
+    post:
+      tags: [Feedback]
+      summary: Create or replace feedback by the current actor
+      operationId: upsertMessageFeedback
+      security:
+        - oauth2: [qa:feedback]
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/FeedbackRequest'}
+      responses:
+        '200':
+          description: Feedback saved
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Feedback'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /knowledge-bases:
+    post:
+      tags: [Knowledge]
+      summary: Create a knowledge base
+      operationId: createKnowledgeBase
+      security:
+        - oauth2: [kb:write]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/KnowledgeBaseCreate'}
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/KnowledgeBase'}
+        '409': {$ref: '#/components/responses/Conflict'}
+    get:
+      tags: [Knowledge]
+      summary: List knowledge bases visible to the current actor
+      operationId: listKnowledgeBases
+      security:
+        - oauth2: [kb:read]
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Page
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/KnowledgeBase'}
+                  next_cursor: {type: [string, 'null']}
+  /knowledge-bases/{knowledge_base_id}/documents:
+    post:
+      tags: [Documents]
+      summary: Create a document version and a presigned upload
+      operationId: createDocumentUpload
+      security:
+        - oauth2: [document:write]
+      parameters:
+        - $ref: '#/components/parameters/KnowledgeBaseId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/DocumentCreate'}
+      responses:
+        '201':
+          description: Upload created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/DocumentUpload'}
+        '413': {$ref: '#/components/responses/PayloadTooLarge'}
+        '415': {$ref: '#/components/responses/UnsupportedMediaType'}
+  /documents/{document_id}/upload-complete:
+    post:
+      tags: [Documents]
+      summary: Verify upload and enqueue ingestion
+      operationId: completeDocumentUpload
+      security:
+        - oauth2: [document:write]
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [version_id, sha256]
+              properties:
+                version_id: {$ref: '#/components/schemas/Uuid'}
+                sha256: {$ref: '#/components/schemas/Sha256'}
+      responses:
+        '202':
+          description: Ingestion enqueued
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JobSummary'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '422': {$ref: '#/components/responses/UnprocessableContent'}
+  /documents/{document_id}:
+    get:
+      tags: [Documents]
+      summary: Get document metadata and latest job state
+      operationId: getDocument
+      security:
+        - oauth2: [document:read]
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+      responses:
+        '200':
+          description: Document
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Document'}
+        '404': {$ref: '#/components/responses/NotFound'}
+    delete:
+      tags: [Documents]
+      summary: Make a document unavailable and begin policy-driven deletion
+      operationId: deleteDocument
+      security:
+        - oauth2: [document:write]
+      parameters:
+        - $ref: '#/components/parameters/DocumentId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Deletion accepted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JobSummary'}
+  /jobs/{job_id}:
+    get:
+      tags: [Operations]
+      summary: Get an asynchronous job
+      operationId: getJob
+      security:
+        - oauth2: [document:read]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+      responses:
+        '200':
+          description: Job
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/Job'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /jobs/{job_id}/retry:
+    post:
+      tags: [Operations]
+      summary: Retry a retryable failed job
+      operationId: retryJob
+      security:
+        - oauth2: [document:write]
+      parameters:
+        - $ref: '#/components/parameters/JobId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202':
+          description: Retry accepted
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/JobSummary'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /retrieval/search:
+    post:
+      tags: [Retrieval]
+      summary: Debug search within the actor's authorized scope
+      operationId: searchKnowledge
+      security:
+        - oauth2: [qa:search]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/SearchRequest'}
+      responses:
+        '200':
+          description: Authorized results
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/SearchResponse'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /health/live:
+    get:
+      tags: [Operations]
+      summary: Liveness probe
+      operationId: liveness
+      security: []
+      responses:
+        '200':
+          description: Process alive
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: {type: string, const: ok}
+  /health/ready:
+    get:
+      tags: [Operations]
+      summary: Readiness probe
+      operationId: readiness
+      security: []
+      responses:
+        '200':
+          description: Ready for traffic
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, checks]
+                properties:
+                  status: {type: string, const: ready}
+                  checks:
+                    type: object
+                    additionalProperties: {type: string}
+        '503': {$ref: '#/components/responses/ServiceUnavailable'}
+components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      flows:
+        authorizationCode:
+          authorizationUrl: https://idp.example.com/oauth2/authorize
+          tokenUrl: https://idp.example.com/oauth2/token
+          scopes:
+            qa:ask: Ask questions and manage own conversations
+            qa:feedback: Submit feedback
+            qa:search: Use authorized retrieval debug API
+            kb:read: Read knowledge-base metadata
+            kb:write: Manage knowledge bases
+            document:read: Read document metadata and jobs
+            document:write: Upload and manage documents
+  parameters:
+    ConversationId:
+      name: conversation_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    MessageId:
+      name: message_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    KnowledgeBaseId:
+      name: knowledge_base_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    DocumentId:
+      name: document_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    JobId:
+      name: job_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    Limit:
+      name: limit
+      in: query
+      schema: {type: integer, minimum: 1, maximum: 100, default: 20}
+    Cursor:
+      name: cursor
+      in: query
+      schema: {type: string, maxLength: 1024}
+    RequestId:
+      name: X-Request-ID
+      in: header
+      schema: {type: string, minLength: 8, maxLength: 128}
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema: {type: string, minLength: 16, maxLength: 128}
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema: {type: string}
+  schemas:
+    Uuid:
+      type: string
+      format: uuid
+    Timestamp:
+      type: string
+      format: date-time
+    TenantSummary:
+      type: object
+      additionalProperties: false
+      required: [id, code]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        code: {type: string, minLength: 3, maxLength: 64}
+    Me:
+      type: object
+      additionalProperties: false
+      required: [id, tenant, roles, permissions, display_name, locale]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        tenant: {$ref: '#/components/schemas/TenantSummary'}
+        roles:
+          type: array
+          uniqueItems: true
+          items: {type: string}
+        permissions:
+          type: array
+          uniqueItems: true
+          items: {type: string}
+        display_name: {type: string, minLength: 1, maxLength: 200}
+        locale: {type: string, minLength: 2, maxLength: 16}
+    Sha256:
+      type: string
+      pattern: '^[a-fA-F0-9]{64}$'
+    ConversationCreate:
+      type: object
+      additionalProperties: false
+      required: [channel]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 300}
+        knowledge_base_ids:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/Uuid'}
+        channel: {type: string, enum: [web, api, approved_connector]}
+        metadata:
+          type: object
+          maxProperties: 20
+          additionalProperties: true
+    Conversation:
+      type: object
+      required: [id, title, status, knowledge_base_ids, created_at, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        title: {type: string}
+        status: {type: string, enum: [active, archived]}
+        knowledge_base_ids:
+          type: array
+          items: {$ref: '#/components/schemas/Uuid'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    ChatCompletionRequest:
+      type: object
+      additionalProperties: false
+      required: [conversation_id, message, stream]
+      properties:
+        conversation_id: {$ref: '#/components/schemas/Uuid'}
+        message: {type: string, minLength: 1, maxLength: 8000}
+        knowledge_base_ids:
+          type: array
+          maxItems: 10
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/Uuid'}
+        stream: {type: boolean}
+        model_policy: {type: string, enum: [fast, balanced, quality], default: balanced}
+        response_mode: {type: string, enum: [grounded_answer, search_only], default: grounded_answer}
+        client_context:
+          type: object
+          additionalProperties: false
+          properties:
+            locale: {type: string, minLength: 2, maxLength: 16}
+    ChatCompletionResponse:
+      type: object
+      required: [request_id, message, citations, usage]
+      properties:
+        request_id: {type: string}
+        message: {$ref: '#/components/schemas/Message'}
+        citations:
+          type: array
+          items: {$ref: '#/components/schemas/Citation'}
+        usage: {$ref: '#/components/schemas/Usage'}
+    Message:
+      type: object
+      required: [id, conversation_id, role, content, status, sequence_no, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        conversation_id: {$ref: '#/components/schemas/Uuid'}
+        role: {type: string, enum: [user, assistant]}
+        content: {type: string}
+        content_format: {type: string, enum: [text, markdown, json], default: markdown}
+        status: {type: string, enum: [pending, streaming, completed, failed, cancelled, blocked]}
+        sequence_no: {type: integer, minimum: 1}
+        finish_reason: {type: [string, 'null'], enum: [stop, length, cancelled, content_filter, error, null]}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        completed_at:
+          oneOf:
+            - $ref: '#/components/schemas/Timestamp'
+            - type: 'null'
+    Citation:
+      type: object
+      required: [id, ordinal, document_id, document_version_id, document_title, quote]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        ordinal: {type: integer, minimum: 1}
+        document_id: {$ref: '#/components/schemas/Uuid'}
+        document_version_id: {$ref: '#/components/schemas/Uuid'}
+        document_title: {type: string, maxLength: 500}
+        version: {type: integer, minimum: 1}
+        page_from: {type: [integer, 'null'], minimum: 1}
+        page_to: {type: [integer, 'null'], minimum: 1}
+        section_path:
+          type: array
+          items: {type: string}
+        quote: {type: string, maxLength: 1200}
+        relevance_score: {type: [number, 'null']}
+    Usage:
+      type: object
+      required: [input_tokens, output_tokens, estimated]
+      properties:
+        input_tokens: {type: integer, minimum: 0}
+        output_tokens: {type: integer, minimum: 0}
+        cached_tokens: {type: integer, minimum: 0, default: 0}
+        estimated: {type: boolean}
+        amount: {type: [string, 'null'], pattern: '^\d+(\.\d{1,8})?$'}
+        currency: {type: [string, 'null'], minLength: 3, maxLength: 3}
+    FeedbackRequest:
+      type: object
+      additionalProperties: false
+      required: [rating, reason_code]
+      properties:
+        rating: {type: integer, enum: [-1, 1]}
+        reason_code:
+          type: string
+          enum: [helpful, incorrect, factually_unsupported, incorrect_citation, outdated, unsafe, other]
+        comment: {type: string, maxLength: 2000}
+    Feedback:
+      allOf:
+        - $ref: '#/components/schemas/FeedbackRequest'
+        - type: object
+          required: [id, message_id, created_at]
+          properties:
+            id: {$ref: '#/components/schemas/Uuid'}
+            message_id: {$ref: '#/components/schemas/Uuid'}
+            created_at: {$ref: '#/components/schemas/Timestamp'}
+    KnowledgeBaseCreate:
+      type: object
+      additionalProperties: false
+      required: [code, name, classification]
+      properties:
+        code: {type: string, pattern: '^[a-z][a-z0-9_-]{2,63}$'}
+        name: {type: string, minLength: 1, maxLength: 200}
+        description: {type: string, maxLength: 2000}
+        classification: {type: string, enum: [public, internal, confidential, restricted]}
+    KnowledgeBase:
+      allOf:
+        - $ref: '#/components/schemas/KnowledgeBaseCreate'
+        - type: object
+          required: [id, status, knowledge_version, created_at, updated_at]
+          properties:
+            id: {$ref: '#/components/schemas/Uuid'}
+            status: {type: string, enum: [active, archived, reindexing]}
+            knowledge_version: {type: integer, minimum: 1}
+            created_at: {$ref: '#/components/schemas/Timestamp'}
+            updated_at: {$ref: '#/components/schemas/Timestamp'}
+    AclEntry:
+      type: object
+      additionalProperties: false
+      required: [principal_type, principal_id, permission]
+      properties:
+        principal_type: {type: string, enum: [user, group, role]}
+        principal_id: {$ref: '#/components/schemas/Uuid'}
+        permission: {type: string, enum: [read, manage]}
+    DocumentCreate:
+      type: object
+      additionalProperties: false
+      required: [title, filename, mime_type, size_bytes, sha256, classification, acl]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 500}
+        filename: {type: string, minLength: 1, maxLength: 512}
+        mime_type:
+          type: string
+          enum: [application/pdf, application/vnd.openxmlformats-officedocument.wordprocessingml.document, text/plain, text/markdown]
+        size_bytes: {type: integer, minimum: 1, maximum: 52428800}
+        sha256: {$ref: '#/components/schemas/Sha256'}
+        classification: {type: string, enum: [public, internal, confidential, restricted]}
+        acl:
+          type: array
+          maxItems: 500
+          items: {$ref: '#/components/schemas/AclEntry'}
+        metadata:
+          type: object
+          maxProperties: 50
+          additionalProperties: true
+    DocumentUpload:
+      type: object
+      required: [document_id, version_id, status, upload]
+      properties:
+        document_id: {$ref: '#/components/schemas/Uuid'}
+        version_id: {$ref: '#/components/schemas/Uuid'}
+        status: {type: string, const: uploading}
+        upload:
+          type: object
+          required: [method, url, expires_at, required_headers]
+          properties:
+            method: {type: string, const: PUT}
+            url: {type: string, format: uri}
+            expires_at: {$ref: '#/components/schemas/Timestamp'}
+            required_headers:
+              type: object
+              additionalProperties: {type: string}
+    Document:
+      type: object
+      required: [id, knowledge_base_id, title, status, classification, metadata, created_at, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        knowledge_base_id: {$ref: '#/components/schemas/Uuid'}
+        title: {type: string}
+        status: {type: string, enum: [draft, processing, ready, archived, deleting, deleted, failed]}
+        classification: {type: string, enum: [public, internal, confidential, restricted]}
+        current_version_id:
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        metadata: {type: object, additionalProperties: true}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        updated_at: {$ref: '#/components/schemas/Timestamp'}
+    JobSummary:
+      type: object
+      required: [job_id, resource_id, status, stage]
+      properties:
+        job_id: {$ref: '#/components/schemas/Uuid'}
+        resource_id: {$ref: '#/components/schemas/Uuid'}
+        status: {type: string, enum: [pending, running, retrying, succeeded, failed, cancelled, dead_letter]}
+        stage: {type: string, enum: [scan, parse, chunk, embed, index, publish, delete, evaluate]}
+    Job:
+      allOf:
+        - $ref: '#/components/schemas/JobSummary'
+        - type: object
+          required: [resource_type, progress, attempt, max_attempts, metrics, created_at, updated_at]
+          properties:
+            resource_type: {type: string, enum: [document_version, document, evaluation]}
+            progress: {type: number, minimum: 0, maximum: 100}
+            attempt: {type: integer, minimum: 0}
+            max_attempts: {type: integer, minimum: 1}
+            metrics: {type: object, additionalProperties: true}
+            error:
+              oneOf:
+                - $ref: '#/components/schemas/JobError'
+                - type: 'null'
+            created_at: {$ref: '#/components/schemas/Timestamp'}
+            updated_at: {$ref: '#/components/schemas/Timestamp'}
+    JobError:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code: {type: string}
+        message: {type: string}
+        retryable: {type: boolean}
+    SearchRequest:
+      type: object
+      additionalProperties: false
+      required: [query, knowledge_base_ids]
+      properties:
+        query: {type: string, minLength: 1, maxLength: 8000}
+        knowledge_base_ids:
+          type: array
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+          items: {$ref: '#/components/schemas/Uuid'}
+        top_k: {type: integer, minimum: 1, maximum: 20, default: 5}
+        include_content: {type: boolean, default: false}
+        filters:
+          type: object
+          maxProperties: 20
+          additionalProperties: true
+    SearchHit:
+      type: object
+      required: [chunk_id, document_id, document_version_id, document_title, section_path, scores, metadata]
+      properties:
+        chunk_id: {$ref: '#/components/schemas/Uuid'}
+        document_id: {$ref: '#/components/schemas/Uuid'}
+        document_version_id: {$ref: '#/components/schemas/Uuid'}
+        document_title: {type: string}
+        page_from: {type: [integer, 'null']}
+        page_to: {type: [integer, 'null']}
+        section_path:
+          type: array
+          items: {type: string}
+        content: {type: string}
+        scores:
+          type: object
+          properties:
+            vector: {type: [number, 'null']}
+            keyword: {type: [number, 'null']}
+            rerank: {type: [number, 'null']}
+        metadata: {type: object, additionalProperties: true}
+    SearchResponse:
+      type: object
+      required: [request_id, retrieval_run_id, hits, took_ms]
+      properties:
+        request_id: {type: string}
+        retrieval_run_id: {$ref: '#/components/schemas/Uuid'}
+        hits:
+          type: array
+          items: {$ref: '#/components/schemas/SearchHit'}
+        took_ms: {type: integer, minimum: 0}
+    Problem:
+      type: object
+      required: [type, title, status, code, detail, request_id, retryable]
+      properties:
+        type: {type: string, format: uri}
+        title: {type: string}
+        status: {type: integer, minimum: 400, maximum: 599}
+        code: {type: string, pattern: '^[A-Z][A-Z0-9_]+$'}
+        detail: {type: string}
+        instance: {type: string}
+        request_id: {type: string}
+        retryable: {type: boolean}
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, code, message]
+            properties:
+              field: {type: string}
+              code: {type: string}
+              message: {type: string}
+  responses:
+    BadRequest:
+      description: Invalid request
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Forbidden:
+      description: Access denied
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    NotFound:
+      description: Resource absent or not visible to the actor
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    Conflict:
+      description: State or idempotency conflict
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    PreconditionFailed:
+      description: ETag/version conflict
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    PayloadTooLarge:
+      description: File exceeds policy
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    UnsupportedMediaType:
+      description: File type not allowed
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    UnprocessableContent:
+      description: Content rejected or cannot be processed
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    TooManyRequests:
+      description: Rate or quota exceeded
+      headers:
+        Retry-After:
+          schema: {type: integer, minimum: 1}
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    UpstreamError:
+      description: Model provider failed and no allowed fallback succeeded
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+    ServiceUnavailable:
+      description: Service not ready
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}

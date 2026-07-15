@@ -1,0 +1,23 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: enterprise-qa-migrate-{{ .Release.Revision }}
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "enterprise-qa.serviceAccountName" . }}
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: migrate
+          image: {{ include "enterprise-qa.image" (list .Values.api.image .) }}
+          command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+          envFrom: [{configMapRef: {name: enterprise-qa-config}}]
+          env:
+            - name: QA_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: {{ .Values.externalSecrets.secretName }}, key: {{ .Values.externalSecrets.databaseUrlKey }}}}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}

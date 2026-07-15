@@ -1,0 +1,52 @@
+imagePullSecrets: []
+
+api:
+  replicaCount: 2
+  image:
+    repository: registry.example.invalid/enterprise-qa-api
+    tag: "0.1.0-s1"
+    digest: ""
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: 1000m, memory: 1Gi}
+
+worker:
+  replicaCount: 1
+  image:
+    repository: registry.example.invalid/enterprise-qa-worker
+    tag: "0.1.0-s1"
+    digest: ""
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+web:
+  replicaCount: 2
+  image:
+    repository: registry.example.invalid/enterprise-qa-web
+    tag: "0.1.0-s1"
+    digest: ""
+  resources:
+    requests: {cpu: 50m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+config:
+  appEnv: production
+  logLevel: INFO
+  oidcIssuer: https://idp.example.invalid/
+  oidcAudience: enterprise-qa-api
+  oidcJwksUrl: https://idp.example.invalid/.well-known/jwks.json
+  oidcAuthorizationUrl: https://idp.example.invalid/authorize
+  oidcTokenUrl: https://idp.example.invalid/token
+  oidcClientId: enterprise-qa-web
+  webPublicUrl: https://qa.example.invalid
+  apiInternalUrl: http://enterprise-qa-api:8000
+
+externalSecrets:
+  secretName: enterprise-qa-runtime
+  databaseUrlKey: database-url
+  cursorSigningKeyKey: cursor-signing-key
+
+serviceAccount:
+  create: true
+  name: ""
