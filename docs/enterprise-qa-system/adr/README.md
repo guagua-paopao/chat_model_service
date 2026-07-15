@@ -17,6 +17,11 @@
 | [ADR-011](ADR-011-conversation-cursor-and-etag.md) | 会话分页游标与 ETag 并发控制 | Accepted |
 | [ADR-012](ADR-012-browser-bff-session.md) | 浏览器 BFF 会话与 CSRF 边界 | Accepted |
 | [ADR-013](ADR-013-reproducible-supply-chain-gate.md) | 可复现依赖与供应链门禁 | Accepted |
+| [ADR-014](ADR-014-provider-neutral-model-adapters.md) | 供应商中立 Adapter 与批准路由 | Accepted |
+| [ADR-015](ADR-015-sse-terminal-events-and-disconnects.md) | SSE 终态、心跳与断线语义 | Accepted |
+| [ADR-016](ADR-016-safe-model-retry-and-failover.md) | 安全重试、故障转移与可见输出边界 | Accepted |
+| [ADR-017](ADR-017-append-only-usage-ledger.md) | 追加式用量账本与价格快照 | Accepted |
+| [ADR-018](ADR-018-shared-quota-and-cancellation-before-production.md) | 多副本前共享配额与取消状态 | Accepted |
 
 ## ADR 状态
 

@@ -6,6 +6,7 @@
 
 - [S0 发现与基线](docs/enterprise-qa-system/s0/README.md)
 - [S1 工程骨架、认证与租户](docs/enterprise-qa-system/s1/README.md)
+- [S2 Model Gateway 与流式聊天](docs/enterprise-qa-system/s2/README.md)
 
 建议从以下三份开始：
 
@@ -18,7 +19,7 @@
 - [OpenAPI 3.1](docs/enterprise-qa-system/openapi.yaml)
 - [PostgreSQL + pgvector 参考 DDL](docs/enterprise-qa-system/schema.sql)
 
-## S1 本地启动
+## S2 本地启动
 
 要求：Python 3.12、Node.js 22、Docker 26+。PowerShell 中执行：
 
@@ -39,4 +40,10 @@ $token = & .\.venv\Scripts\python.exe apps\api\scripts\issue_dev_token.py demo
 Invoke-RestMethod http://127.0.0.1:8000/api/v1/me -Headers @{Authorization="Bearer $token"}
 ```
 
-开发令牌只允许 `local/test/dev`，生产配置会在启动时拒绝它。完整教学、字段和故障排查见 [S1 运行手册](docs/enterprise-qa-system/s1/04-local-development-tutorial.md)。
+浏览器端到端验证（需 Compose 已启动）：
+
+```powershell
+.\.venv\Scripts\python.exe scripts\smoke_s2.py
+```
+
+开发令牌和 Fake Provider 只允许 `local/test/dev`，生产配置会在启动时拒绝它们。S2 只提供通用模型回答，不使用企业知识或引用。完整教学、字段和故障注入见 [S2 开发手册](docs/enterprise-qa-system/s2/04-development-tutorial-and-fault-injection.md)。

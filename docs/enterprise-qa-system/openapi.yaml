@@ -35,6 +35,27 @@ paths:
               schema: {$ref: '#/components/schemas/Me'}
         '401': {$ref: '#/components/responses/Unauthorized'}
         '403': {$ref: '#/components/responses/Forbidden'}
+  /models:
+    get:
+      tags: [Chat]
+      summary: List safe model capabilities available to the current actor
+      operationId: listModels
+      security:
+        - oauth2: [qa:ask]
+      responses:
+        '200':
+          description: Safe capability metadata; endpoints and secrets are never returned
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: {$ref: '#/components/schemas/ModelSummary'}
+        '401': {$ref: '#/components/responses/Unauthorized'}
+        '403': {$ref: '#/components/responses/Forbidden'}
   /conversations:
     post:
       tags: [Conversations]
@@ -153,10 +174,11 @@ paths:
   /chat/completions:
     post:
       tags: [Chat]
-      summary: Create a grounded answer
+      summary: Create a model answer
       description: |
         With stream=true and Accept=text/event-stream, the body is an SSE event stream.
         Errors after stream establishment are sent as an `error` event.
+        S2 only accepts response_mode=general and returns no enterprise citations.
       operationId: createChatCompletion
       security:
         - oauth2: [qa:ask]
@@ -201,8 +223,32 @@ paths:
                 required: [message_id, status]
                 properties:
                   message_id: {$ref: '#/components/schemas/Uuid'}
-                  status: {type: string, const: cancelling}
+                  status: {type: string, enum: [cancelling, cancelled]}
         '409': {$ref: '#/components/responses/Conflict'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /messages/{message_id}/retry:
+    post:
+      tags: [Chat]
+      summary: Retry a failed or cancelled assistant message
+      operationId: retryMessage
+      security:
+        - oauth2: [qa:ask]
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RetryRequest'}
+      responses:
+        '200':
+          description: SSE stream or complete response, depending on `stream`
+          content:
+            text/event-stream: {schema: {type: string}}
+            application/json: {schema: {$ref: '#/components/schemas/ChatCompletionResponse'}}
+        '404': {$ref: '#/components/responses/NotFound'}
+        '409': {$ref: '#/components/responses/Conflict'}
+        '429': {$ref: '#/components/responses/TooManyRequests'}
   /messages/{message_id}/feedback:
     post:
       tags: [Feedback]
@@ -552,16 +598,33 @@ components:
           additionalProperties: true
     Conversation:
       type: object
-      required: [id, title, status, knowledge_base_ids, created_at, updated_at]
+      required: [id, title, status, channel, knowledge_base_ids, metadata, created_at, updated_at]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         title: {type: string}
         status: {type: string, enum: [active, archived]}
+        channel: {type: string, enum: [web, api, approved_connector]}
         knowledge_base_ids:
           type: array
           items: {$ref: '#/components/schemas/Uuid'}
+        metadata: {type: object, additionalProperties: true}
         created_at: {$ref: '#/components/schemas/Timestamp'}
         updated_at: {$ref: '#/components/schemas/Timestamp'}
+    ModelSummary:
+      type: object
+      additionalProperties: false
+      required: [id, display_name, capabilities, status, max_context_tokens, allowed_policies]
+      properties:
+        id: {type: string, minLength: 1, maxLength: 64}
+        display_name: {type: string, minLength: 1, maxLength: 200}
+        capabilities:
+          type: array
+          items: {type: string}
+        status: {type: string, enum: [available, degraded]}
+        max_context_tokens: {type: integer, minimum: 1}
+        allowed_policies:
+          type: array
+          items: {type: string, enum: [fast, balanced, quality]}
     ChatCompletionRequest:
       type: object
       additionalProperties: false
@@ -576,7 +639,10 @@ components:
           items: {$ref: '#/components/schemas/Uuid'}
         stream: {type: boolean}
         model_policy: {type: string, enum: [fast, balanced, quality], default: balanced}
-        response_mode: {type: string, enum: [grounded_answer, search_only], default: grounded_answer}
+        response_mode:
+          type: string
+          enum: [general, grounded_answer, search_only]
+          default: general
         client_context:
           type: object
           additionalProperties: false
@@ -604,11 +670,20 @@ components:
         status: {type: string, enum: [pending, streaming, completed, failed, cancelled, blocked]}
         sequence_no: {type: integer, minimum: 1}
         finish_reason: {type: [string, 'null'], enum: [stop, length, cancelled, content_filter, error, null]}
+        provider: {type: [string, 'null']}
+        model: {type: [string, 'null']}
+        error_code: {type: [string, 'null']}
         created_at: {$ref: '#/components/schemas/Timestamp'}
         completed_at:
           oneOf:
             - $ref: '#/components/schemas/Timestamp'
             - type: 'null'
+    RetryRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        stream: {type: boolean, default: true}
+        model_policy: {type: string, enum: [fast, balanced, quality], default: balanced}
     Citation:
       type: object
       required: [id, ordinal, document_id, document_version_id, document_title, quote]
