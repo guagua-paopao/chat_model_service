@@ -81,6 +81,13 @@ services:
       QA_OIDC_JWKS_URL: http://fake-idp:9000/jwks
       QA_DEV_JWT_SECRET: ${QA_DEV_JWT_SECRET:?set QA_DEV_JWT_SECRET in .env}
       QA_CURSOR_SIGNING_KEY: ${QA_CURSOR_SIGNING_KEY:?set QA_CURSOR_SIGNING_KEY in .env}
+      QA_FAKE_MODEL_ENABLED: "true"
+      QA_MODEL_PROVIDER_ENABLED: "false"
+      QA_MODEL_MAX_ATTEMPTS: "3"
+      QA_MODEL_MAX_CONCURRENCY: "8"
+      QA_CHAT_REQUESTS_PER_MINUTE: "30"
+      QA_CHAT_TENANT_CONCURRENCY: "8"
+      QA_CHAT_USER_CONCURRENCY: "2"
     depends_on:
       postgres:
         condition: service_healthy

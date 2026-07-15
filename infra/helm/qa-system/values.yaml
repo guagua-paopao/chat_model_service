@@ -4,7 +4,7 @@ api:
   replicaCount: 2
   image:
     repository: registry.example.invalid/enterprise-qa-api
-    tag: "0.1.0-s1"
+    tag: "0.2.0-s2"
     digest: ""
   resources:
     requests: {cpu: 100m, memory: 256Mi}
@@ -14,7 +14,7 @@ worker:
   replicaCount: 1
   image:
     repository: registry.example.invalid/enterprise-qa-worker
-    tag: "0.1.0-s1"
+    tag: "0.2.0-s2"
     digest: ""
   resources:
     requests: {cpu: 50m, memory: 128Mi}
@@ -24,7 +24,7 @@ web:
   replicaCount: 2
   image:
     repository: registry.example.invalid/enterprise-qa-web
-    tag: "0.1.0-s1"
+    tag: "0.2.0-s2"
     digest: ""
   resources:
     requests: {cpu: 50m, memory: 128Mi}
@@ -41,11 +41,25 @@ config:
   oidcClientId: enterprise-qa-web
   webPublicUrl: https://qa.example.invalid
   apiInternalUrl: http://enterprise-qa-api:8000
+  modelProviderEnabled: true
+  modelProviderBaseUrl: https://approved-model-gateway.example.invalid/v1
+  modelProviderModel: approved-chat-model
+  modelConnectTimeoutSeconds: 5
+  modelFirstTokenTimeoutSeconds: 10
+  modelTotalTimeoutSeconds: 60
+  modelMaxAttempts: 3
+  modelMaxConcurrency: 8
+  chatRequestsPerMinute: 30
+  chatTenantConcurrency: 8
+  chatUserConcurrency: 2
+  chatMaxInputTokens: 4096
+  chatMaxOutputTokens: 1024
 
 externalSecrets:
   secretName: enterprise-qa-runtime
   databaseUrlKey: database-url
   cursorSigningKeyKey: cursor-signing-key
+  modelApiKeyKey: model-api-key
 
 serviceAccount:
   create: true

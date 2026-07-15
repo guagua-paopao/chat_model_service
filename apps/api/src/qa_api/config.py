@@ -31,6 +31,22 @@ class Settings:
     cursor_signing_key: str | None = None
     jwt_leeway_seconds: int = 30
     max_request_bytes: int = 1_048_576
+    fake_model_enabled: bool = False
+    model_provider_enabled: bool = False
+    model_provider_base_url: str | None = None
+    model_provider_api_key: str | None = None
+    model_provider_model: str | None = None
+    model_connect_timeout_seconds: float = 5.0
+    model_first_token_timeout_seconds: float = 10.0
+    model_total_timeout_seconds: float = 60.0
+    model_max_attempts: int = 3
+    model_max_concurrency: int = 8
+    chat_requests_per_minute: int = 30
+    chat_tenant_concurrency: int = 8
+    chat_user_concurrency: int = 2
+    chat_max_input_tokens: int = 4_096
+    chat_max_output_tokens: int = 1_024
+    fake_model_chunk_delay_ms: int = 40
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -51,6 +67,28 @@ class Settings:
             cursor_signing_key=os.getenv("QA_CURSOR_SIGNING_KEY") or None,
             jwt_leeway_seconds=int(os.getenv("QA_JWT_LEEWAY_SECONDS", "30")),
             max_request_bytes=int(os.getenv("QA_MAX_REQUEST_BYTES", "1048576")),
+            fake_model_enabled=_as_bool(
+                os.getenv("QA_FAKE_MODEL_ENABLED"), app_env in {"local", "test", "dev"}
+            ),
+            model_provider_enabled=_as_bool(os.getenv("QA_MODEL_PROVIDER_ENABLED"), False),
+            model_provider_base_url=os.getenv("QA_MODEL_PROVIDER_BASE_URL") or None,
+            model_provider_api_key=os.getenv("QA_MODEL_PROVIDER_API_KEY") or None,
+            model_provider_model=os.getenv("QA_MODEL_PROVIDER_MODEL") or None,
+            model_connect_timeout_seconds=float(
+                os.getenv("QA_MODEL_CONNECT_TIMEOUT_SECONDS", "5")
+            ),
+            model_first_token_timeout_seconds=float(
+                os.getenv("QA_MODEL_FIRST_TOKEN_TIMEOUT_SECONDS", "10")
+            ),
+            model_total_timeout_seconds=float(os.getenv("QA_MODEL_TOTAL_TIMEOUT_SECONDS", "60")),
+            model_max_attempts=int(os.getenv("QA_MODEL_MAX_ATTEMPTS", "3")),
+            model_max_concurrency=int(os.getenv("QA_MODEL_MAX_CONCURRENCY", "8")),
+            chat_requests_per_minute=int(os.getenv("QA_CHAT_REQUESTS_PER_MINUTE", "30")),
+            chat_tenant_concurrency=int(os.getenv("QA_CHAT_TENANT_CONCURRENCY", "8")),
+            chat_user_concurrency=int(os.getenv("QA_CHAT_USER_CONCURRENCY", "2")),
+            chat_max_input_tokens=int(os.getenv("QA_CHAT_MAX_INPUT_TOKENS", "4096")),
+            chat_max_output_tokens=int(os.getenv("QA_CHAT_MAX_OUTPUT_TOKENS", "1024")),
+            fake_model_chunk_delay_ms=int(os.getenv("QA_FAKE_MODEL_CHUNK_DELAY_MS", "40")),
         )
         return settings.validated()
 
@@ -76,4 +114,37 @@ class Settings:
             raise ValueError("QA_JWT_LEEWAY_SECONDS must be between 0 and 300")
         if not 1_024 <= self.max_request_bytes <= 10_485_760:
             raise ValueError("QA_MAX_REQUEST_BYTES must be between 1 KiB and 10 MiB")
+        if self.app_env in {"staging", "production"} and self.fake_model_enabled:
+            raise ValueError("the fake model provider is forbidden outside local/test/dev")
+        if self.model_provider_enabled:
+            if not self.model_provider_base_url or not self.model_provider_base_url.startswith(
+                "https://"
+            ):
+                raise ValueError("QA_MODEL_PROVIDER_BASE_URL must be an https URL")
+            if not self.model_provider_api_key:
+                raise ValueError("QA_MODEL_PROVIDER_API_KEY is required when provider is enabled")
+            if not self.model_provider_model:
+                raise ValueError("QA_MODEL_PROVIDER_MODEL is required when provider is enabled")
+        if self.app_env in {"staging", "production"} and not self.model_provider_enabled:
+            raise ValueError("an approved model provider is required outside local development")
+        if not 0.1 <= self.model_connect_timeout_seconds <= 60:
+            raise ValueError("QA_MODEL_CONNECT_TIMEOUT_SECONDS must be between 0.1 and 60")
+        if not 0.1 <= self.model_first_token_timeout_seconds <= 120:
+            raise ValueError("QA_MODEL_FIRST_TOKEN_TIMEOUT_SECONDS must be between 0.1 and 120")
+        if not self.model_first_token_timeout_seconds <= self.model_total_timeout_seconds <= 600:
+            raise ValueError("QA_MODEL_TOTAL_TIMEOUT_SECONDS must cover first token and be <= 600")
+        if not 1 <= self.model_max_attempts <= 5:
+            raise ValueError("QA_MODEL_MAX_ATTEMPTS must be between 1 and 5")
+        if not 1 <= self.model_max_concurrency <= 256:
+            raise ValueError("QA_MODEL_MAX_CONCURRENCY must be between 1 and 256")
+        if not 1 <= self.chat_requests_per_minute <= 10_000:
+            raise ValueError("QA_CHAT_REQUESTS_PER_MINUTE must be between 1 and 10000")
+        if not 1 <= self.chat_user_concurrency <= self.chat_tenant_concurrency <= 1_000:
+            raise ValueError("chat concurrency must satisfy user <= tenant <= 1000")
+        if not 128 <= self.chat_max_input_tokens <= 1_000_000:
+            raise ValueError("QA_CHAT_MAX_INPUT_TOKENS is outside the supported range")
+        if not 16 <= self.chat_max_output_tokens <= 100_000:
+            raise ValueError("QA_CHAT_MAX_OUTPUT_TOKENS is outside the supported range")
+        if not 0 <= self.fake_model_chunk_delay_ms <= 10_000:
+            raise ValueError("QA_FAKE_MODEL_CHUNK_DELAY_MS must be between 0 and 10000")
         return self

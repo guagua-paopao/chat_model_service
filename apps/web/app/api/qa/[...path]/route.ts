@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { NextRequest, NextResponse } from "next/server";
 
-const ALLOWED_PATH = /^(me|conversations(?:\/[0-9a-f-]{36})?)$/;
+const ALLOWED_PATH = /^(me|models|conversations(?:\/[0-9a-f-]{36})?|chat\/completions|messages\/[0-9a-f-]{36}\/(?:cancel|retry))$/;
 const SAFE_METHODS = new Set(["GET", "HEAD"]);
 
 async function proxy(
