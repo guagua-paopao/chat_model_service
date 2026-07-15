@@ -1,0 +1,78 @@
+phase: S1
+name: engineering-foundation-identity-and-tenancy
+version: s1-v1.0
+date: 2026-07-15
+status: conditional_go_s2_synthetic_development
+implemented:
+  applications:
+    - nextjs_web_bff
+    - fastapi_api
+    - async_worker_skeleton
+    - local_fake_oidc_provider
+  api:
+    - GET /api/v1/health/live
+    - GET /api/v1/health/ready
+    - GET /api/v1/me
+    - POST /api/v1/conversations
+    - GET /api/v1/conversations
+    - GET /api/v1/conversations/{conversation_id}
+    - PATCH /api/v1/conversations/{conversation_id}
+    - DELETE /api/v1/conversations/{conversation_id}
+  infrastructure:
+    - docker_compose
+    - postgresql_pgvector
+    - redis
+    - minio
+    - opentelemetry_collector
+    - helm_skeleton
+    - github_actions_ci
+  database_tables:
+    - tenants
+    - users
+    - roles
+    - user_roles
+    - conversations
+    - messages
+    - audit_logs
+decisions:
+  log: decision-log.md
+  adrs:
+    - ADR-009
+    - ADR-010
+    - ADR-011
+    - ADR-012
+    - ADR-013
+verification:
+  automated_tests: 21
+  pytest_subtests: 9
+  coverage_percent: 89.66
+  strict_warnings: passed
+  ruff: passed
+  mypy: passed
+  migration_sqlite_up_down_up: passed
+  migration_postgresql_up: passed
+  openapi_parse: passed
+  next_build: passed
+  docker_images_built: 4
+  compose_full_stack: passed
+  oidc_bff_smoke: passed
+  python_runtime_known_vulnerabilities: 0
+  npm_known_vulnerabilities: 0
+deferred_verification:
+  - enterprise_oidc_integration
+  - github_main_branch_dev_deployment
+  - helm_lint_and_cluster_install
+  - buildkit_ci_execution
+blocked_for_real_data_or_production:
+  - s0_business_security_and_data_approvals
+  - enterprise_oidc_registration_and_group_mapping
+  - production_secret_manager_and_tls
+  - approved_deployment_cluster_and_environment
+  - approved_model_routes_and_data_terms
+next_phase: S2
+next_phase_allowed_scope:
+  - synthetic_model_gateway
+  - deterministic_fake_provider
+  - optional_approved_model_sandbox
+  - rest_and_sse_chat_contract
+  - cancellation_retry_usage_and_cost_telemetry

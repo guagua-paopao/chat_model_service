@@ -1,0 +1,26 @@
+name: deploy-dev
+
+on:
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require deployment integration
+        run: |
+          test -n "${{ vars.DEV_DEPLOY_COMMAND }}" || {
+            echo "Configure the approved dev deployment integration in the GitHub dev environment."
+            exit 1
+          }
+      - name: Deployment adapter placeholder
+        run: "${{ vars.DEV_DEPLOY_COMMAND }}"

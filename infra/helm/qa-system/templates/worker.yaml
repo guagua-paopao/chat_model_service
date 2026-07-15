@@ -1,0 +1,20 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: enterprise-qa-worker
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels: {app.kubernetes.io/name: enterprise-qa-worker}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/name: enterprise-qa-worker}
+    spec:
+      serviceAccountName: {{ include "enterprise-qa.serviceAccountName" . }}
+      securityContext: {runAsNonRoot: true, seccompProfile: {type: RuntimeDefault}}
+      containers:
+        - name: worker
+          image: {{ include "enterprise-qa.image" (list .Values.worker.image .) }}
+          envFrom: [{configMapRef: {name: enterprise-qa-config}}]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
+          resources: {{- toYaml .Values.worker.resources | nindent 12 }}

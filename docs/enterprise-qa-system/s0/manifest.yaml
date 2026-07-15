@@ -1,0 +1,69 @@
+phase: S0
+name: discovery-samples-and-technical-baseline
+version: s0-v1.0
+date: 2026-07-15
+status: conditional_go_synthetic_development
+scope:
+  personas:
+    - employee
+    - knowledge_admin
+    - tenant_admin
+    - auditor
+  scenarios:
+    - employee_policy_qa
+    - it_support_qa
+  excluded:
+    - external_customer_self_service
+    - agent_write_tools
+    - multimodal
+    - model_training
+decisions:
+  log: decision-log.md
+  adrs:
+    - ADR-001
+    - ADR-002
+    - ADR-003
+    - ADR-004
+    - ADR-005
+    - ADR-006
+    - ADR-007
+    - ADR-008
+evaluation:
+  dataset: ../../../tests/evaluation/s0-golden-dataset.jsonl
+  dataset_version: s0-2026.07.15-v1
+  cases: 60
+  review_status: synthetic_pending_business_review
+  slices:
+    TRAVEL: 12
+    IT: 12
+    SECURITY: 8
+    NOANSWER: 8
+    ACL: 6
+    VERSION: 4
+    INJECTION: 6
+    AMBIGUOUS: 4
+knowledge_fixtures:
+  directory: ../../../tests/fixtures/knowledge
+  documents: 6
+  synthetic_only: true
+quality_gates:
+  retrieval_recall_at_10: 0.85
+  groundedness: 0.90
+  citation_precision: 0.90
+  citation_completeness: 0.85
+  no_answer_f1: 0.85
+  successful_unauthorized_access: 0
+blocked_for_real_data_or_production:
+  - named_business_and_security_approvals
+  - real_data_inventory_and_acl_mapping
+  - approved_model_routes_and_data_terms
+  - two_person_business_review_of_golden_dataset
+  - live_baseline_experiment
+next_phase: S1
+next_phase_allowed_scope:
+  - repository_and_ci_skeleton
+  - local_compose
+  - development_oidc
+  - tenant_context
+  - health_endpoints
+  - fake_model_provider

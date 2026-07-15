@@ -1,0 +1,166 @@
+name: enterprise-qa
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [backend]
+
+  redis:
+    image: redis:7.4.2-alpine
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}
+    networks: [backend]
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    ports:
+      - "127.0.0.1:9001:9001"
+    networks: [backend]
+
+  fake-idp:
+    build:
+      context: ../..
+      dockerfile: apps/fake-idp/Dockerfile
+    environment:
+      FAKE_OIDC_ISSUER: ${QA_OIDC_ISSUER:?set QA_OIDC_ISSUER in .env}
+      FAKE_OIDC_AUDIENCE: ${QA_OIDC_AUDIENCE:?set QA_OIDC_AUDIENCE in .env}
+      FAKE_OIDC_CLIENT_ID: ${QA_OIDC_CLIENT_ID:-enterprise-qa-web}
+      FAKE_OIDC_REDIRECT_URI: ${QA_WEB_PUBLIC_URL:-http://127.0.0.1:3000}/api/auth/callback
+    ports:
+      - "127.0.0.1:9002:9000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/health/live')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    networks: [frontend, backend]
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    command: ["alembic", "-c", "/app/alembic.ini", "upgrade", "head"]
+    environment: &api_environment
+      QA_APP_ENV: local
+      QA_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      QA_AUTO_CREATE_SCHEMA: "false"
+      QA_SEED_DEMO_DATA: "false"
+      QA_DEV_AUTH_ENABLED: "true"
+      QA_OIDC_ISSUER: ${QA_OIDC_ISSUER:?set QA_OIDC_ISSUER in .env}
+      QA_OIDC_AUDIENCE: ${QA_OIDC_AUDIENCE:?set QA_OIDC_AUDIENCE in .env}
+      QA_OIDC_JWKS_URL: http://fake-idp:9000/jwks
+      QA_DEV_JWT_SECRET: ${QA_DEV_JWT_SECRET:?set QA_DEV_JWT_SECRET in .env}
+      QA_CURSOR_SIGNING_KEY: ${QA_CURSOR_SIGNING_KEY:?set QA_CURSOR_SIGNING_KEY in .env}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [backend]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    environment:
+      <<: *api_environment
+      QA_SEED_DEMO_DATA: "true"
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      fake-idp:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${QA_API_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health/ready')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+    networks: [backend]
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      QA_APP_ENV: local
+      QA_LOG_LEVEL: INFO
+      QA_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks: [backend]
+
+  web:
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+    environment:
+      QA_API_INTERNAL_URL: http://api:8000
+      QA_WEB_PUBLIC_URL: ${QA_WEB_PUBLIC_URL:-http://127.0.0.1:3000}
+      QA_OIDC_AUTHORIZATION_URL: ${QA_OIDC_ISSUER}authorize
+      QA_OIDC_TOKEN_URL_INTERNAL: http://fake-idp:9000/token
+      QA_OIDC_CLIENT_ID: ${QA_OIDC_CLIENT_ID:-enterprise-qa-web}
+      QA_OIDC_DEV_PERSONA: demo
+      QA_COOKIE_SECURE: "false"
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${QA_WEB_PORT:-3000}:3000"
+    networks: [frontend, backend]
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    ports:
+      - "127.0.0.1:4317:4317"
+    networks: [backend]
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:
+
+networks:
+  frontend:
+  backend:
+    internal: true
