@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 from dataclasses import dataclass
 
@@ -92,6 +93,12 @@ class Settings:
     reranker_provider_model: str | None = None
     reranker_timeout_seconds: float = 20.0
     local_governance_evaluator_enabled: bool = True
+    local_quality_evaluator_enabled: bool = True
+    telemetry_export_enabled: bool = False
+    otel_exporter_otlp_endpoint: str | None = None
+    otel_service_name: str = "enterprise-qa-api"
+    release_revision: str = "local-unknown"
+    telemetry_metric_export_interval_ms: int = 10_000
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -220,6 +227,23 @@ class Settings:
             local_governance_evaluator_enabled=_as_bool(
                 os.getenv("QA_LOCAL_GOVERNANCE_EVALUATOR_ENABLED"),
                 app_env in {"local", "test", "dev"},
+            ),
+            local_quality_evaluator_enabled=_as_bool(
+                os.getenv("QA_LOCAL_QUALITY_EVALUATOR_ENABLED"),
+                app_env in {"local", "test", "dev"},
+            ),
+            telemetry_export_enabled=_as_bool(
+                os.getenv("QA_TELEMETRY_EXPORT_ENABLED"), False
+            ),
+            otel_exporter_otlp_endpoint=(
+                os.getenv("QA_OTEL_EXPORTER_OTLP_ENDPOINT")
+                or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+                or None
+            ),
+            otel_service_name=os.getenv("QA_OTEL_SERVICE_NAME", "enterprise-qa-api"),
+            release_revision=os.getenv("QA_RELEASE_REVISION", "local-unknown"),
+            telemetry_metric_export_interval_ms=int(
+                os.getenv("QA_TELEMETRY_METRIC_EXPORT_INTERVAL_MS", "10000")
             ),
         )
         return settings.validated()
@@ -372,4 +396,16 @@ class Settings:
             raise ValueError("QA_RERANKER_TIMEOUT_SECONDS must be between 0.1 and 120")
         if self.app_env in {"staging", "production"} and self.local_governance_evaluator_enabled:
             raise ValueError("the local governance evaluator is forbidden outside development")
+        if self.app_env in {"staging", "production"} and self.local_quality_evaluator_enabled:
+            raise ValueError("the local quality evaluator is forbidden outside development")
+        if self.telemetry_export_enabled and not self.otel_exporter_otlp_endpoint:
+            raise ValueError("QA_OTEL_EXPORTER_OTLP_ENDPOINT is required for telemetry export")
+        if not 1_000 <= self.telemetry_metric_export_interval_ms <= 300_000:
+            raise ValueError(
+                "QA_TELEMETRY_METRIC_EXPORT_INTERVAL_MS must be between 1000 and 300000"
+            )
+        if not re.fullmatch(r"[A-Za-z0-9._/-]{1,128}", self.otel_service_name):
+            raise ValueError("QA_OTEL_SERVICE_NAME contains unsupported characters")
+        if not re.fullmatch(r"[A-Za-z0-9._/-]{1,128}", self.release_revision):
+            raise ValueError("QA_RELEASE_REVISION contains unsupported characters")
         return self

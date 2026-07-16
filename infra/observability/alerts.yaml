@@ -1,0 +1,62 @@
+groups:
+  - name: enterprise-qa-s6-slo
+    interval: 30s
+    rules:
+      - alert: EnterpriseQaTelemetryMissing
+        expr: absent(up{job="enterprise-qa-api"} == 1)
+        for: 5m
+        labels:
+          severity: P1
+          owner: qa-platform-sre
+        annotations:
+          summary: Enterprise QA telemetry target is missing
+          rationale: Five minutes avoids paging during an ordinary rolling restart.
+          runbook_url: https://github.com/guagua-paopao/chat_model_service/blob/main/docs/enterprise-qa-system/s6/03-observability-slo-alerts-and-runbooks.md#telemetrymissing
+
+      - alert: EnterpriseQaAvailabilityBurnFast
+        expr: |
+          (
+            sum(rate(enterprise_qa_qa_http_requests_total{http_response_status_code=~"5.."}[5m]))
+            /
+            clamp_min(sum(rate(enterprise_qa_qa_http_requests_total[5m])), 0.001)
+          ) > 0.0144
+          and
+          (
+            sum(rate(enterprise_qa_qa_http_requests_total{http_response_status_code=~"5.."}[1h]))
+            /
+            clamp_min(sum(rate(enterprise_qa_qa_http_requests_total[1h])), 0.001)
+          ) > 0.0144
+        for: 2m
+        labels:
+          severity: P1
+          owner: qa-platform-sre
+        annotations:
+          summary: 99.9% availability error budget is burning faster than 14.4x
+          rationale: Multi-window burn-rate paging catches severe incidents without single-window noise.
+          runbook_url: https://github.com/guagua-paopao/chat_model_service/blob/main/docs/enterprise-qa-system/s6/03-observability-slo-alerts-and-runbooks.md#availabilityburnfast
+
+      - alert: EnterpriseQaApiLatencyP95High
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(enterprise_qa_qa_http_request_duration_seconds_bucket[10m]))
+          ) > 2.5
+        for: 10m
+        labels:
+          severity: P2
+          owner: qa-platform-sre
+        annotations:
+          summary: API request latency P95 is above 2.5 seconds
+          rationale: Ten minutes distinguishes a sustained breach from a short deployment spike.
+          runbook_url: https://github.com/guagua-paopao/chat_model_service/blob/main/docs/enterprise-qa-system/s6/03-observability-slo-alerts-and-runbooks.md#apilatencyp95high
+
+      - alert: EnterpriseQaEvaluationGateFailed
+        expr: increase(enterprise_qa_qa_evaluation_runs_total{qa_evaluation_gate_result="failed"}[15m]) > 0
+        for: 0m
+        labels:
+          severity: P2
+          owner: qa-quality
+        annotations:
+          summary: A release quality evaluation gate failed
+          rationale: A failed immutable evaluation must block promotion immediately.
+          runbook_url: https://github.com/guagua-paopao/chat_model_service/blob/main/docs/enterprise-qa-system/s6/03-observability-slo-alerts-and-runbooks.md#evaluationgatefailed

@@ -118,6 +118,11 @@ services:
       QA_RERANKER_PROVIDER_ENABLED: "false"
       QA_RERANKER_TIMEOUT_SECONDS: "20"
       QA_LOCAL_GOVERNANCE_EVALUATOR_ENABLED: "true"
+      QA_LOCAL_QUALITY_EVALUATOR_ENABLED: "true"
+      QA_TELEMETRY_EXPORT_ENABLED: "true"
+      QA_OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      QA_OTEL_SERVICE_NAME: enterprise-qa-api
+      QA_RELEASE_REVISION: s6-local-compose
     depends_on:
       postgres:
         condition: service_healthy
@@ -131,7 +136,6 @@ services:
     environment:
       <<: *api_environment
       QA_SEED_DEMO_DATA: "true"
-      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -194,12 +198,45 @@ services:
       - ./otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
       - "127.0.0.1:4317:4317"
-    networks: [backend]
+    networks: [frontend, backend]
+
+  prometheus:
+    image: prom/prometheus:v3.10.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yaml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ../observability/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro
+      - ../observability/alerts.yaml:/etc/prometheus/alerts.yaml:ro
+      - prometheus_data:/prometheus
+    depends_on: [otel-collector]
+    ports:
+      - "127.0.0.1:9090:9090"
+    networks: [frontend, backend]
+
+  grafana:
+    image: grafana/grafana:13.1.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_BASIC_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on: [prometheus]
+    ports:
+      - "127.0.0.1:3001:3000"
+    networks: [frontend, backend]
 
 volumes:
   postgres_data:
   redis_data:
   minio_data:
+  prometheus_data:
+  grafana_data:
 
 networks:
   frontend:

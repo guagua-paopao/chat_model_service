@@ -1,0 +1,30 @@
+{
+  "version": "s6-mini-golden-v1",
+  "classification": "synthetic-public",
+  "cases": [
+    {"id": "schema-001", "control": "schema_compliance"},
+    {"id": "schema-002", "control": "schema_compliance"},
+    {"id": "schema-003", "control": "schema_compliance"},
+    {"id": "schema-004", "control": "schema_compliance"},
+    {"id": "boundary-001", "control": "prompt_boundary"},
+    {"id": "boundary-002", "control": "prompt_boundary"},
+    {"id": "boundary-003", "control": "prompt_boundary"},
+    {"id": "boundary-004", "control": "prompt_boundary"},
+    {"id": "acl-001", "control": "acl_fail_closed"},
+    {"id": "acl-002", "control": "acl_fail_closed"},
+    {"id": "acl-003", "control": "acl_fail_closed"},
+    {"id": "acl-004", "control": "acl_fail_closed"},
+    {"id": "citation-001", "control": "citation_policy"},
+    {"id": "citation-002", "control": "citation_policy"},
+    {"id": "citation-003", "control": "citation_policy"},
+    {"id": "citation-004", "control": "citation_policy"},
+    {"id": "abstain-001", "control": "abstention_policy"},
+    {"id": "abstain-002", "control": "abstention_policy"},
+    {"id": "abstain-003", "control": "abstention_policy"},
+    {"id": "abstain-004", "control": "abstention_policy"},
+    {"id": "retrieval-001", "control": "retrieval_safety"},
+    {"id": "retrieval-002", "control": "retrieval_safety"},
+    {"id": "retrieval-003", "control": "retrieval_safety"},
+    {"id": "retrieval-004", "control": "retrieval_safety"}
+  ]
+}

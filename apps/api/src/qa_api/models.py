@@ -704,3 +704,84 @@ class SecurityIncidentResponse(StrictModel):
 
 class SecurityIncidentListResponse(StrictModel):
     items: list[SecurityIncidentResponse]
+
+
+class EvaluationRunCreate(StrictModel):
+    dataset_version_id: str = Field(
+        default="s6-mini-golden-v1", min_length=1, max_length=128
+    )
+    candidate_config_ids: list[UUID] = Field(min_length=1, max_length=5)
+    baseline_run_id: UUID | None = None
+    tags: list[str] = Field(default_factory=list, max_length=10)
+
+    @field_validator("candidate_config_ids")
+    @classmethod
+    def candidate_ids_are_unique(cls, value: list[UUID]) -> list[UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("candidate_config_ids must be unique")
+        return value
+
+    @field_validator("tags")
+    @classmethod
+    def tags_are_safe(cls, value: list[str]) -> list[str]:
+        cleaned = [item.strip().lower() for item in value]
+        if len(set(cleaned)) != len(cleaned):
+            raise ValueError("tags must be unique")
+        if any(not item or len(item) > 32 for item in cleaned):
+            raise ValueError("tags must contain 1 to 32 characters")
+        if any(not item.replace("-", "").replace("_", "").isalnum() for item in cleaned):
+            raise ValueError("tags may contain letters, numbers, hyphens and underscores")
+        return cleaned
+
+
+class EvaluationRunResponse(StrictModel):
+    id: UUID
+    dataset_version_id: str
+    dataset_checksum: str
+    candidate_config_ids: list[UUID]
+    baseline_run_id: UUID | None
+    status: Literal["completed", "failed"]
+    metrics: dict[str, Any]
+    thresholds: dict[str, Any]
+    deltas: dict[str, Any]
+    gate_result: Literal["passed", "failed"]
+    failed_cases: list[dict[str, Any]]
+    amount: Decimal
+    currency: str
+    code_revision: str
+    evaluator_version: str
+    tags: list[str]
+    error_code: str | None
+    created_by: UUID
+    started_at: datetime
+    completed_at: datetime | None
+    created_at: datetime
+
+
+class EvaluationRunListResponse(StrictModel):
+    items: list[EvaluationRunResponse]
+
+
+class UsageBreakdown(StrictModel):
+    key: str
+    requests: int
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+    amount: Decimal
+    currency: str
+
+
+class UsageReportResponse(StrictModel):
+    from_time: datetime
+    to_time: datetime
+    group_by: Literal["none", "model", "operation"]
+    items: list[UsageBreakdown]
+
+
+class OperationsSnapshotResponse(StrictModel):
+    generated_at: datetime
+    scope: Literal["process_and_tenant_snapshot"]
+    production_slo_evidence: Literal[False]
+    request_window: dict[str, Any]
+    tenant_signals: dict[str, Any]

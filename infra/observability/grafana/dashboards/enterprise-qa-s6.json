@@ -1,0 +1,56 @@
+{
+  "annotations": {"list": []},
+  "editable": false,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Availability (non-5xx)",
+      "type": "stat",
+      "targets": [{"refId": "A", "expr": "1 - (sum(rate(enterprise_qa_qa_http_requests_total{http_response_status_code=~\"5..\"}[5m])) / clamp_min(sum(rate(enterprise_qa_qa_http_requests_total[5m])), 0.001))"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 7, "w": 6, "x": 0, "y": 0}
+    },
+    {
+      "id": 2,
+      "title": "API latency P95",
+      "type": "stat",
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le) (rate(enterprise_qa_qa_http_request_duration_seconds_bucket[5m])))"}],
+      "fieldConfig": {"defaults": {"unit": "s", "thresholds": {"mode": "absolute", "steps": [{"color": "green", "value": null}, {"color": "red", "value": 2.5}]}}, "overrides": []},
+      "gridPos": {"h": 7, "w": 6, "x": 6, "y": 0}
+    },
+    {
+      "id": 3,
+      "title": "Request rate by status",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "sum by (http_response_status_code) (rate(enterprise_qa_qa_http_requests_total[5m]))", "legendFormat": "{{http_response_status_code}}"}],
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 7, "w": 12, "x": 12, "y": 0}
+    },
+    {
+      "id": 4,
+      "title": "Evaluation quality score",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.5, sum by (le) (rate(enterprise_qa_qa_evaluation_quality_score_bucket[30m])))"}],
+      "fieldConfig": {"defaults": {"unit": "percentunit", "min": 0, "max": 1}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 7}
+    },
+    {
+      "id": 5,
+      "title": "Evaluation gates",
+      "type": "timeseries",
+      "targets": [{"refId": "A", "expr": "sum by (qa_evaluation_gate_result) (increase(enterprise_qa_qa_evaluation_runs_total[1h]))", "legendFormat": "{{qa_evaluation_gate_result}}"}],
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 7}
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 42,
+  "tags": ["enterprise-qa", "s6", "slo"],
+  "templating": {"list": []},
+  "time": {"from": "now-6h", "to": "now"},
+  "timezone": "browser",
+  "title": "Enterprise QA S6 - Quality and Reliability",
+  "uid": "enterprise-qa-s6",
+  "version": 1
+}

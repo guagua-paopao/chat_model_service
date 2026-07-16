@@ -69,6 +69,10 @@ def main() -> int:
         "/retrieval/search",
         "/messages/{message_id}/feedback",
         "/messages/{message_id}/citations/{citation_id}",
+        "/evaluations/runs",
+        "/evaluations/runs/{run_id}",
+        "/usage",
+        "/admin/operations/snapshot",
     }
     missing = required_paths - set(openapi.get("paths", {}))
     if missing:

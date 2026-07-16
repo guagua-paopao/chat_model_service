@@ -373,6 +373,10 @@ NFR 全部、ADM-005/006、[08](08-testing-and-evaluation.md)、[10](10-observab
 
 性能、质量、故障和恢复报告批准；生产告警经过测试触发；仪表盘可按版本比较；值班人员按 Runbook 完成一次演练。
 
+### S6 本地实现记录（2026-07-16）
+
+本阶段已形成 [S6 证据包](s6/README.md)：实现不可变版本化评测与基线差异门禁、隐私安全 OTel、Prometheus/Grafana、4 条带 Owner/Runbook 的告警规则、有界负载、5 个确定性 Fake Provider 故障场景及隔离恢复演练。全量回归为 72 tests + 35 subtests、88.84% coverage，Python/npm 已知漏洞 0；本地工程 Gate 为 PASS。由于真实业务评测、目标集群性能、企业 Pager/Trace/日志后端、PostgreSQL PITR/跨区域恢复和具名签字尚未完成，原生产退出条件仍未满足，真实数据、staging、production 保持 NO-GO。
+
 ---
 
 ## S7. UAT、灰度上线与运营移交（W15–W16）

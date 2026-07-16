@@ -15,6 +15,8 @@ try {
     & $python -m mypy --strict apps/api/src
     & $python -m pytest -W error --cov=qa_api --cov=fake_idp --cov-fail-under=85 --cov-report=term
     & $python scripts/evaluate_s4.py
+    & $python scripts/fault_s6.py
+    & $python scripts/drill_s6_recovery.py
 
     New-Item -ItemType Directory -Force ".local" | Out-Null
     $migrationDirectory = (Resolve-Path ".local").Path
@@ -61,7 +63,7 @@ try {
     if ($OnlineAudit) {
         & $python -m pip_audit -r requirements.lock
     }
-    Write-Host "S5 checks passed."
+    Write-Host "S6 checks passed."
 }
 finally {
     Pop-Location

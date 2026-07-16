@@ -70,3 +70,9 @@ data:
   QA_RERANKER_PROVIDER_MODEL: {{ .Values.config.rerankerProviderModel | quote }}
   QA_RERANKER_TIMEOUT_SECONDS: {{ .Values.config.rerankerTimeoutSeconds | quote }}
   QA_LOCAL_GOVERNANCE_EVALUATOR_ENABLED: "false"
+  QA_LOCAL_QUALITY_EVALUATOR_ENABLED: "false"
+  QA_TELEMETRY_EXPORT_ENABLED: {{ .Values.config.telemetryExportEnabled | quote }}
+  QA_OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.config.otelExporterOtlpEndpoint | quote }}
+  QA_OTEL_SERVICE_NAME: {{ .Values.config.otelServiceName | quote }}
+  QA_RELEASE_REVISION: {{ .Values.config.releaseRevision | quote }}
+  QA_TELEMETRY_METRIC_EXPORT_INTERVAL_MS: {{ .Values.config.telemetryMetricExportIntervalMs | quote }}
