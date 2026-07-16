@@ -75,6 +75,22 @@ class Settings:
     embedding_provider_api_key: str | None = None
     embedding_provider_model: str | None = None
     embedding_dimensions: int = 16
+    rag_enabled: bool = True
+    retrieval_vector_candidates: int = 20
+    retrieval_lexical_candidates: int = 20
+    retrieval_rerank_candidates: int = 12
+    retrieval_final_k: int = 5
+    retrieval_rrf_k: int = 60
+    retrieval_context_max_tokens: int = 1_200
+    retrieval_min_relevance: float = 0.28
+    retrieval_min_query_coverage: float = 0.34
+    citation_max_quote_chars: int = 1_200
+    fake_reranker_enabled: bool = True
+    reranker_provider_enabled: bool = False
+    reranker_provider_base_url: str | None = None
+    reranker_provider_api_key: str | None = None
+    reranker_provider_model: str | None = None
+    reranker_timeout_seconds: float = 20.0
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -168,6 +184,38 @@ class Settings:
             embedding_provider_api_key=os.getenv("QA_EMBEDDING_PROVIDER_API_KEY") or None,
             embedding_provider_model=os.getenv("QA_EMBEDDING_PROVIDER_MODEL") or None,
             embedding_dimensions=int(os.getenv("QA_EMBEDDING_DIMENSIONS", "16")),
+            rag_enabled=_as_bool(os.getenv("QA_RAG_ENABLED"), True),
+            retrieval_vector_candidates=int(
+                os.getenv("QA_RETRIEVAL_VECTOR_CANDIDATES", "20")
+            ),
+            retrieval_lexical_candidates=int(
+                os.getenv("QA_RETRIEVAL_LEXICAL_CANDIDATES", "20")
+            ),
+            retrieval_rerank_candidates=int(
+                os.getenv("QA_RETRIEVAL_RERANK_CANDIDATES", "12")
+            ),
+            retrieval_final_k=int(os.getenv("QA_RETRIEVAL_FINAL_K", "5")),
+            retrieval_rrf_k=int(os.getenv("QA_RETRIEVAL_RRF_K", "60")),
+            retrieval_context_max_tokens=int(
+                os.getenv("QA_RETRIEVAL_CONTEXT_MAX_TOKENS", "1200")
+            ),
+            retrieval_min_relevance=float(
+                os.getenv("QA_RETRIEVAL_MIN_RELEVANCE", "0.28")
+            ),
+            retrieval_min_query_coverage=float(
+                os.getenv("QA_RETRIEVAL_MIN_QUERY_COVERAGE", "0.34")
+            ),
+            citation_max_quote_chars=int(os.getenv("QA_CITATION_MAX_QUOTE_CHARS", "1200")),
+            fake_reranker_enabled=_as_bool(
+                os.getenv("QA_FAKE_RERANKER_ENABLED"), app_env in {"local", "test", "dev"}
+            ),
+            reranker_provider_enabled=_as_bool(
+                os.getenv("QA_RERANKER_PROVIDER_ENABLED"), False
+            ),
+            reranker_provider_base_url=os.getenv("QA_RERANKER_PROVIDER_BASE_URL") or None,
+            reranker_provider_api_key=os.getenv("QA_RERANKER_PROVIDER_API_KEY") or None,
+            reranker_provider_model=os.getenv("QA_RERANKER_PROVIDER_MODEL") or None,
+            reranker_timeout_seconds=float(os.getenv("QA_RERANKER_TIMEOUT_SECONDS", "20")),
         )
         return settings.validated()
 
@@ -282,4 +330,39 @@ class Settings:
             raise ValueError("an approved embedding provider is required outside local development")
         if not 8 <= self.embedding_dimensions <= 4_096:
             raise ValueError("QA_EMBEDDING_DIMENSIONS must be between 8 and 4096")
+        if not 1 <= self.retrieval_final_k <= self.retrieval_rerank_candidates <= 100:
+            raise ValueError("retrieval ranks must satisfy final_k <= rerank_candidates <= 100")
+        if not self.retrieval_rerank_candidates <= self.retrieval_vector_candidates <= 500:
+            raise ValueError("vector candidate count must cover rerank candidates and be <= 500")
+        if not self.retrieval_rerank_candidates <= self.retrieval_lexical_candidates <= 500:
+            raise ValueError("lexical candidate count must cover rerank candidates and be <= 500")
+        if not 1 <= self.retrieval_rrf_k <= 1_000:
+            raise ValueError("QA_RETRIEVAL_RRF_K must be between 1 and 1000")
+        if not 128 <= self.retrieval_context_max_tokens < self.chat_max_input_tokens:
+            raise ValueError("RAG context budget must be >= 128 and below chat input budget")
+        if not 0 <= self.retrieval_min_relevance <= 1:
+            raise ValueError("QA_RETRIEVAL_MIN_RELEVANCE must be between 0 and 1")
+        if not 0 <= self.retrieval_min_query_coverage <= 1:
+            raise ValueError("QA_RETRIEVAL_MIN_QUERY_COVERAGE must be between 0 and 1")
+        if not 200 <= self.citation_max_quote_chars <= 4_000:
+            raise ValueError("QA_CITATION_MAX_QUOTE_CHARS must be between 200 and 4000")
+        if self.fake_reranker_enabled and self.reranker_provider_enabled:
+            raise ValueError("fake and provider rerankers cannot both be enabled")
+        if self.app_env in {"staging", "production"} and self.fake_reranker_enabled:
+            raise ValueError("the fake reranker is forbidden outside local/test/dev")
+        if self.reranker_provider_enabled:
+            if (
+                not self.reranker_provider_base_url
+                or not self.reranker_provider_base_url.startswith("https://")
+            ):
+                raise ValueError("QA_RERANKER_PROVIDER_BASE_URL must be an https URL")
+            if not self.reranker_provider_api_key or not self.reranker_provider_model:
+                raise ValueError("reranker provider key and model are required")
+        if self.app_env in {"staging", "production"} and self.rag_enabled:
+            if not self.reranker_provider_enabled:
+                raise ValueError("an approved reranker provider is required for production RAG")
+            if not self.database_url.startswith("postgresql"):
+                raise ValueError("production RAG requires PostgreSQL with pgvector")
+        if not 0.1 <= self.reranker_timeout_seconds <= 120:
+            raise ValueError("QA_RERANKER_TIMEOUT_SECONDS must be between 0.1 and 120")
         return self

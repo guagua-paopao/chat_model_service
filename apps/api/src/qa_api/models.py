@@ -101,6 +101,27 @@ class ConversationListResponse(StrictModel):
     next_cursor: str | None = None
 
 
+class CitationResponse(StrictModel):
+    id: UUID
+    ordinal: int = Field(ge=1)
+    source_id: str
+    document_id: UUID
+    document_version_id: UUID
+    document_title: str
+    version: int = Field(ge=1)
+    page_from: int | None = Field(default=None, ge=1)
+    page_to: int | None = Field(default=None, ge=1)
+    section_path: list[str] = Field(default_factory=list)
+    quote: str
+    relevance_score: float = Field(ge=0, le=1)
+
+
+class CitationDetailResponse(CitationResponse):
+    message_id: UUID
+    access_checked_at: datetime
+    source_url: None = None
+
+
 class MessageResponse(StrictModel):
     id: UUID
     conversation_id: UUID
@@ -115,6 +136,12 @@ class MessageResponse(StrictModel):
     provider: str | None = None
     model: str | None = None
     error_code: str | None = None
+    response_mode: Literal["general", "grounded_answer", "search_only"] = "general"
+    knowledge_base_ids: list[UUID] = Field(default_factory=list)
+    retrieval_run_id: UUID | None = None
+    prompt_version: str | None = None
+    abstention_reason: str | None = None
+    citations: list[CitationResponse] = Field(default_factory=list)
 
 
 class ConversationDetailResponse(ConversationResponse):
@@ -163,7 +190,7 @@ class UsageResponse(StrictModel):
 class ChatCompletionResponse(StrictModel):
     request_id: str
     message: MessageResponse
-    citations: list[dict[str, Any]] = Field(default_factory=list)
+    citations: list[CitationResponse] = Field(default_factory=list)
     usage: UsageResponse
 
 
@@ -175,6 +202,28 @@ class CancellationResponse(StrictModel):
 class RetryRequest(StrictModel):
     stream: bool = True
     model_policy: Literal["fast", "balanced", "quality"] = "balanced"
+
+
+class FeedbackRequest(StrictModel):
+    rating: Literal[-1, 1]
+    reason_code: Literal[
+        "helpful",
+        "incorrect",
+        "factually_unsupported",
+        "incorrect_citation",
+        "outdated",
+        "unsafe",
+        "other",
+    ]
+    comment: str | None = Field(default=None, max_length=2_000)
+
+
+class FeedbackResponse(FeedbackRequest):
+    id: UUID
+    message_id: UUID
+    snapshot: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
 
 
 class ModelSummary(StrictModel):

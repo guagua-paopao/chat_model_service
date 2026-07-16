@@ -29,6 +29,8 @@ from qa_api.models import (
     CancellationResponse,
     ChatCompletionRequest,
     ChatCompletionResponse,
+    CitationDetailResponse,
+    CitationResponse,
     ConversationCreate,
     ConversationDetailResponse,
     ConversationListResponse,
@@ -40,6 +42,8 @@ from qa_api.models import (
     DocumentUploadResponse,
     DocumentVersionCreate,
     DocumentVersionResponse,
+    FeedbackRequest,
+    FeedbackResponse,
     HealthResponse,
     IngestionJobResponse,
     KnowledgeBaseCreate,
@@ -68,13 +72,16 @@ from qa_api.persistence import (
     DocumentVersionRow,
     IngestionJobRow,
     KnowledgeBaseRow,
+    utc_now,
 )
+from qa_api.rag import CitationView, RagService
 from qa_api.repositories import (
     ConversationRepository,
     IdentityRepository,
     etag,
     parse_etag,
 )
+from qa_api.reranker import build_reranker
 from qa_api.security import TokenVerifier, bearer_token
 
 logger = logging.getLogger("qa_api")
@@ -89,12 +96,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     model_gateway = build_model_gateway(resolved_settings)
     object_store = build_object_store(resolved_settings)
     embedding_adapter = build_embedding_adapter(resolved_settings)
+    reranker = build_reranker(resolved_settings)
+    rag_service = RagService(
+        settings=resolved_settings,
+        session_factory=database.session_factory,
+        embedding=embedding_adapter,
+        reranker=reranker,
+    )
     quota_manager = QuotaManager(resolved_settings)
     cancellation_registry = CancellationRegistry()
     chat_service = ChatService(
         settings=resolved_settings,
         session_factory=database.session_factory,
         gateway=model_gateway,
+        rag=rag_service,
         quotas=quota_manager,
         cancellations=cancellation_registry,
     )
@@ -121,7 +136,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Enterprise QA API",
-        version="0.3.0-s3",
+        version="0.4.0-s4",
         openapi_url="/api/v1/openapi.json",
         docs_url="/api/v1/docs" if resolved_settings.app_env != "production" else None,
         redoc_url=None,
@@ -135,6 +150,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.chat_service = chat_service
     app.state.object_store = object_store
     app.state.ingestion_service = ingestion_service
+    app.state.rag_service = rag_service
     app.add_middleware(RequestContextMiddleware, settings=resolved_settings)
 
     def get_session() -> Iterator[Session]:
@@ -549,7 +565,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return ConversationDetailResponse(
             **_conversation_response(record).model_dump(),
-            messages=[_message_response(message) for message in message_records],
+            messages=[
+                _message_response(
+                    message,
+                    rag_service.list_citations(
+                        principal=principal, message_id=message.id
+                    )
+                    if message.role == "assistant"
+                    else [],
+                )
+                for message in message_records
+            ],
             next_cursor=None,
         )
 
@@ -659,6 +685,58 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             trace_id=request.state.trace_id,
         )
         return await _chat_response(chat_service, prepared, payload.stream, principal)
+
+    @app.get(
+        "/api/v1/messages/{message_id}/citations/{citation_id}",
+        response_model=CitationDetailResponse,
+        tags=["Citations"],
+    )
+    def get_citation_detail(
+        message_id: UUID,
+        citation_id: UUID,
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> CitationDetailResponse:
+        require(principal, "qa:ask")
+        citation = rag_service.get_citation(
+            principal=principal, message_id=message_id, citation_id=citation_id
+        )
+        return CitationDetailResponse(
+            **_citation_response(citation).model_dump(),
+            message_id=message_id,
+            access_checked_at=utc_now(),
+            source_url=None,
+        )
+
+    @app.post(
+        "/api/v1/messages/{message_id}/feedback",
+        response_model=FeedbackResponse,
+        tags=["Feedback"],
+    )
+    def upsert_message_feedback(
+        message_id: UUID,
+        payload: FeedbackRequest,
+        principal: Annotated[Principal, Depends(get_principal)],
+    ) -> FeedbackResponse:
+        require(principal, "qa:feedback")
+        row = rag_service.upsert_feedback(
+            principal=principal,
+            message_id=message_id,
+            rating=payload.rating,
+            reason_code=payload.reason_code,
+            comment=payload.comment,
+        )
+        return FeedbackResponse.model_validate(
+            {
+                "id": row.id,
+                "message_id": row.message_id,
+                "rating": row.rating,
+                "reason_code": row.reason_code,
+                "comment": row.comment,
+                "snapshot": row.snapshot,
+                "created_at": row.created_at,
+                "updated_at": row.updated_at,
+            }
+        )
 
     return app
 
@@ -779,7 +857,26 @@ def _conversation_response(record: ConversationRecord) -> ConversationResponse:
     )
 
 
-def _message_response(record: MessageRecord) -> MessageResponse:
+def _citation_response(citation: CitationView) -> CitationResponse:
+    return CitationResponse(
+        id=citation.id,
+        ordinal=citation.ordinal,
+        source_id=citation.source_id,
+        document_id=citation.document_id,
+        document_version_id=citation.document_version_id,
+        document_title=citation.document_title,
+        version=citation.version_no,
+        page_from=citation.page_from,
+        page_to=citation.page_to,
+        section_path=list(citation.section_path),
+        quote=citation.quote,
+        relevance_score=citation.relevance_score,
+    )
+
+
+def _message_response(
+    record: MessageRecord, citations: list[CitationView] | None = None
+) -> MessageResponse:
     return MessageResponse(
         id=record.id,
         conversation_id=record.conversation_id,
@@ -794,6 +891,12 @@ def _message_response(record: MessageRecord) -> MessageResponse:
         provider=record.provider_code,
         model=record.model_code,
         error_code=record.error_code,
+        response_mode=record.response_mode,
+        knowledge_base_ids=list(record.knowledge_base_ids),
+        retrieval_run_id=record.retrieval_run_id,
+        prompt_version=record.prompt_version,
+        abstention_reason=record.abstention_reason,
+        citations=[_citation_response(item) for item in citations or []],
     )
 
 
@@ -864,6 +967,9 @@ async def _chat_response(
     message = service.get_message(
         principal=principal, message_id=prepared.assistant_message_id
     )
+    citations = service.citations(
+        principal=principal, message_id=prepared.assistant_message_id
+    )
     if usage is None:
         raise ApiError(
             500,
@@ -873,8 +979,8 @@ async def _chat_response(
         )
     return ChatCompletionResponse(
         request_id=prepared.request_id,
-        message=_message_response(message),
-        citations=[],
+        message=_message_response(message, citations),
+        citations=[_citation_response(item) for item in citations],
         usage=usage,
     )
 

@@ -37,3 +37,16 @@
 | [ADR-022](ADR-022-acl-before-ranking.md) | ACL 必须先于评分/top-k | Accepted |
 | [ADR-023](ADR-023-versioned-ingestion-provenance-and-hash-reuse.md) | 摄取 provenance 与受限 hash reuse | Accepted |
 | [ADR-024](ADR-024-production-ingestion-fail-fast.md) | 生产对象存储、Embedding、ClamAV fail-fast | Accepted |
+
+## S4 新增 ADR
+
+| ADR | 决策 | 状态 |
+|---|---|---|
+| [ADR-025](ADR-025-acl-filtered-hybrid-retrieval.md) | ACL 安全集合内双通道召回、RRF 与 rerank | Accepted |
+| [ADR-026](ADR-026-immutable-rag-config-and-retrieval-snapshots.md) | 不可变 RAG 配置和检索快照 | Accepted |
+| [ADR-027](ADR-027-buffer-grounded-output-before-citation-validation.md) | 引用校验前 grounded 输出不可见 | Accepted |
+| [ADR-028](ADR-028-immutable-citations-with-current-authorization.md) | 不可变引用快照与当前 ACL 再鉴权 | Accepted |
+| [ADR-029](ADR-029-evidence-gated-no-model-abstention.md) | 证据门槛/安全拒答不调用模型 | Accepted |
+| [ADR-030](ADR-030-untrusted-source-boundary-and-injection-redaction.md) | SOURCE 不可信边界与注入句移除 | Accepted |
+| [ADR-031](ADR-031-exact-pgvector-before-ann.md) | 正确性基线后再选 ANN | Accepted |
+| [ADR-032](ADR-032-no-semantic-cache-until-authorization-invalidation-proven.md) | 安全证明前不启用 semantic cache | Accepted |

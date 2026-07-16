@@ -1152,6 +1152,7 @@ class IngestionService:
                     section_path=list(chunk.section_path),
                     element_type=chunk.element_type,
                     embedding=vector,
+                    embedding_vector=vector,
                     embedding_model=self.embedding.model_code,
                     status="staged",
                     is_active=False,

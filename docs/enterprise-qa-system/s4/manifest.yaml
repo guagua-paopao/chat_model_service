@@ -1,0 +1,83 @@
+phase: S4
+name: grounded-rag-hybrid-retrieval-citations
+version: s4-v1.0
+date: 2026-07-16
+status: conditional_go_s5_synthetic_quality_and_observability
+data_scope: synthetic_public_or_explicitly_approved_non_sensitive_only
+implemented:
+  chat_modes: [general, grounded_answer, search_only]
+  retrieval:
+    - acl_first_postgresql_pgvector_cosine
+    - acl_first_postgresql_full_text_search
+    - sqlite_deterministic_test_fallback
+    - weighted_reciprocal_rank_fusion
+    - deterministic_local_and_https_provider_reranker
+    - dedup_adjacent_merge_and_token_budget
+    - evidence_relevance_and_query_coverage_gate
+  grounding:
+    - untrusted_json_source_context
+    - direct_and_indirect_prompt_injection_controls
+    - buffered_grounded_output
+    - server_source_id_validation
+    - no_model_abstention_and_search_only
+  traceability:
+    - immutable_published_rag_config
+    - retrieval_run_and_hit_score_snapshots
+    - prompt_embedding_reranker_model_and_acl_versions
+    - immutable_citations_with_current_acl_reauthorization
+    - message_feedback_with_answer_snapshot
+  api:
+    - POST /api/v1/chat/completions knowledge_modes
+    - GET /api/v1/messages/{message_id}/citations/{citation_id}
+    - POST /api/v1/messages/{message_id}/feedback
+  web:
+    - response_mode_selector
+    - retrieval_abstention_safety_and_failure_states
+    - reauthorized_citation_preview
+    - structured_feedback
+decisions:
+  log: decision-log.md
+  adrs: [ADR-025, ADR-026, ADR-027, ADR-028, ADR-029, ADR-030, ADR-031, ADR-032]
+verification:
+  automated_tests: 58
+  qa_api_coverage_percent: 88
+  rag_coverage_percent: 89
+  reranker_coverage_percent: 94
+  s4_synthetic_evaluation_cases: 20
+  recall_at_10: 1.0
+  citation_precision: 1.0
+  citation_completeness: 1.0
+  groundedness_proxy: 1.0
+  abstention_precision: 1.0
+  abstention_recall: 1.0
+  unauthorized_leakage_count: 0
+  ruff: passed
+  mypy_strict: passed
+  sqlite_migration_up_down_up: passed
+  postgresql_pgvector_migration_and_smoke: passed
+  migration_version: 20260716_0004
+  next_lint_typecheck_build: passed
+  openapi_and_yaml: passed_9_yaml_169_refs_20_paths
+  compose_config_and_full_stack: passed
+  python_known_vulnerabilities: 0
+  npm_known_vulnerabilities: 0
+  helm_cli_lint: not_run_cli_unavailable
+blocked_for_real_data_or_production:
+  - business_reviewed_multilingual_golden_set_and_claim_level_evaluator
+  - approved_chat_embedding_and_reranker_providers
+  - enterprise_oidc_group_scim_and_revocation
+  - chinese_full_text_tokenizer_and_dictionary
+  - fixed_dimension_ann_recall_latency_capacity_benchmark
+  - prompt_injection_red_team_parser_sandbox_and_content_firewall
+  - classification_aware_chat_model_routing_approval
+  - shared_redis_quota_concurrency_and_cancellation
+  - s3_iam_kms_tls_lifecycle_clamav_and_reconciliation
+  - kubernetes_helm_ingress_network_policy_secret_manager
+  - production_slo_observability_backup_and_disaster_recovery
+next_phase: S5
+next_phase_allowed_scope:
+  - synthetic_and_approved_quality_evaluation_expansion
+  - rag_observability_dashboards_and_alerts
+  - immutable_config_approval_canary_and_rollback
+  - isolated_ann_and_chinese_fts_benchmarks_after_model_approval
+publication: local_archive_only_until_explicit_user_confirmation

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 from typing import Protocol
 
 import httpx
@@ -27,8 +28,8 @@ class EmbeddingAdapter(Protocol):
 
 
 class DeterministicFakeEmbeddingAdapter:
-    model_code = "fake-embedding-v1"
-    version = "s3-v1"
+    model_code = "fake-embedding-v2"
+    version = "s4-v1"
     external = False
 
     def __init__(self, dimensions: int) -> None:
@@ -37,21 +38,20 @@ class DeterministicFakeEmbeddingAdapter:
     def embed(self, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
         for text in texts:
-            material = bytearray()
-            counter = 0
-            while len(material) < self.dimensions:
-                material.extend(
-                    hashlib.sha256(f"{counter}:{text}".encode()).digest()
-                )
-                counter += 1
-            raw = [((value / 255.0) * 2.0) - 1.0 for value in material[: self.dimensions]]
+            raw = [0.0] * self.dimensions
+            for term in _semantic_terms(text):
+                digest = hashlib.sha256(term.encode("utf-8")).digest()
+                index = int.from_bytes(digest[:4], "big") % self.dimensions
+                raw[index] += -1.0 if digest[4] & 1 else 1.0
+            if not any(raw):
+                raw[0] = 1.0
             norm = math.sqrt(sum(value * value for value in raw)) or 1.0
             vectors.append([round(value / norm, 8) for value in raw])
         return vectors
 
 
 class OpenAICompatibleEmbeddingAdapter:
-    version = "s3-v1"
+    version = "s4-v1"
     external = True
 
     def __init__(
@@ -137,3 +137,14 @@ def build_embedding_adapter(settings: Settings) -> EmbeddingAdapter:
         "No approved embedding route is available.",
         retryable=True,
     )
+
+
+def _semantic_terms(text: str) -> list[str]:
+    terms: list[str] = []
+    for token in re.findall(r"[a-z0-9]+|[\u3400-\u9fff]+", text.lower()):
+        if re.fullmatch(r"[\u3400-\u9fff]+", token):
+            terms.append(token)
+            terms.extend(token[index : index + 2] for index in range(max(0, len(token) - 1)))
+        else:
+            terms.append(token)
+    return terms

@@ -35,7 +35,25 @@ button.secondary { background: white; color: #246846; border: 1px solid #9bbbaa;
 button.ghost { background: transparent; color: #53645a; border: 1px solid #cbd8d0; }
 .answer { min-height: 145px; margin-top: 20px; padding: 18px; border: 1px solid #d7e3dc; border-radius: 14px; background: white; line-height: 1.7; white-space: pre-wrap; }
 .answer-status { display: inline-block; padding: 3px 8px; border-radius: 999px; background: #e3eee7; color: #315541; font-size: 12px; font-weight: 750; text-transform: uppercase; }
+.answer-status.failed { background: #f9e0dc; color: #8b2f27; }
+.answer.abstained { border-color: #dfbd8c; background: #fffaf2; }
 .answer small { color: #65746b; }
+.retrieval-state { color: #52685b; font-size: 13px; font-weight: 650; }
+.mode-picker { display: flex; flex-wrap: wrap; gap: 8px; }
+button.mode { background: white; color: #52645a; border: 1px solid #b9c9c0; }
+button.mode.active { background: #246846; color: white; border-color: #246846; }
+.mode-help { margin: 9px 0 0; color: #586a60; font-size: 13px; }
+.citations { margin-top: 18px; }
+.citations h3 { margin-bottom: 9px; }
+button.citation { width: 100%; display: grid; gap: 7px; margin-top: 8px; text-align: left; color: #23392d; background: #f8fbf9; border: 1px solid #c8d9cf; }
+button.citation:hover { border-color: #4d8b69; }
+button.citation span { font-weight: 450; line-height: 1.5; }
+button.citation small { color: #607268; }
+.citation-detail { margin-top: 12px; padding: 15px; border-left: 4px solid #347356; background: white; border-radius: 8px; }
+.citation-detail p { white-space: pre-wrap; }
+.feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; }
+.feedback span { font-weight: 650; }
+.feedback small { flex: 1 1 100%; color: #52645a; }
 .progress { height: 8px; margin-top: 14px; overflow: hidden; border-radius: 99px; background: #d8e4dc; }
 .progress span { display: block; height: 100%; border-radius: inherit; background: #2b8a57; transition: width .25s ease; }
 .search-form { display: grid; grid-template-columns: 1fr auto; gap: 9px; margin: 18px 0 10px; }

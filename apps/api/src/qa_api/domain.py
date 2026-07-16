@@ -54,6 +54,12 @@ class MessageRecord:
     output_tokens: int | None
     cached_tokens: int | None
     error_code: str | None
+    response_mode: str
+    knowledge_base_ids: tuple[UUID, ...]
+    rag_config_id: UUID | None
+    retrieval_run_id: UUID | None
+    prompt_version: str | None
+    abstention_reason: str | None
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None

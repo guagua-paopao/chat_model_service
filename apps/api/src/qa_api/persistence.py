@@ -7,10 +7,12 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
+from pgvector.sqlalchemy import VECTOR
 from sqlalchemy import (
     JSON,
     Boolean,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -27,6 +29,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.pool import StaticPool
+from sqlalchemy.types import TypeDecorator
 
 from qa_api.config import Settings
 
@@ -37,6 +40,18 @@ def utc_now() -> datetime:
 
 class Base(DeclarativeBase):
     pass
+
+
+class PortableVector(TypeDecorator[list[float]]):
+    """Use pgvector in PostgreSQL and JSON in fast local SQLite tests."""
+
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect: Any) -> Any:
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(VECTOR())
+        return dialect.type_descriptor(JSON())
 
 
 class TenantRow(Base):
@@ -244,6 +259,7 @@ class DocumentChunkRow(Base):
     section_path: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
     element_type: Mapped[str] = mapped_column(String(32), nullable=False)
     embedding: Mapped[list[float]] = mapped_column(JSON, nullable=False)
+    embedding_vector: Mapped[list[float] | None] = mapped_column(PortableVector())
     embedding_model: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="staged", nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -308,6 +324,28 @@ class OutboxEventRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class RagConfigRow(Base):
+    __tablename__ = "rag_configs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code", "version"),
+        UniqueConstraint("tenant_id", "id"),
+        Index("rag_configs_published_idx", "tenant_id", "code", "status", "version"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    code: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    prompt_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_template: Mapped[str] = mapped_column(Text, nullable=False)
+    config_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class ConversationRow(Base):
     __tablename__ = "conversations"
     __table_args__ = (
@@ -352,6 +390,12 @@ class MessageRow(Base):
     cached_tokens: Mapped[int | None] = mapped_column(Integer)
     error_code: Mapped[str | None] = mapped_column(String(64))
     error_detail_safe: Mapped[str | None] = mapped_column(String(500))
+    response_mode: Mapped[str] = mapped_column(String(24), default="general", nullable=False)
+    knowledge_base_ids: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    rag_config_id: Mapped[UUID | None] = mapped_column(Uuid)
+    retrieval_run_id: Mapped[UUID | None] = mapped_column(Uuid)
+    prompt_version: Mapped[str | None] = mapped_column(String(64))
+    abstention_reason: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -362,6 +406,112 @@ class MessageRow(Base):
         ),
         UniqueConstraint("tenant_id", "conversation_id", "sequence_no"),
     )
+
+
+class RetrievalRunRow(Base):
+    __tablename__ = "retrieval_runs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        Index("retrieval_runs_message_idx", "tenant_id", "message_id"),
+        Index("retrieval_runs_created_idx", "tenant_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    conversation_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    message_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("messages.id"), nullable=False)
+    rag_config_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("rag_configs.id"), nullable=False)
+    response_mode: Mapped[str] = mapped_column(String(24), nullable=False)
+    query_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    knowledge_base_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    acl_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    knowledge_snapshot: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    embedding_model: Mapped[str] = mapped_column(String(128), nullable=False)
+    reranker_model: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    abstention_reason: Mapped[str | None] = mapped_column(String(64))
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RetrievalHitRow(Base):
+    __tablename__ = "retrieval_hits"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "retrieval_run_id", "chunk_id"),
+        Index("retrieval_hits_run_rank_idx", "tenant_id", "retrieval_run_id", "final_rank"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    retrieval_run_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("retrieval_runs.id"), nullable=False
+    )
+    chunk_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("document_chunks.id"), nullable=False)
+    vector_rank: Mapped[int | None] = mapped_column(Integer)
+    lexical_rank: Mapped[int | None] = mapped_column(Integer)
+    fusion_rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    final_rank: Mapped[int] = mapped_column(Integer, nullable=False)
+    vector_score: Mapped[float | None] = mapped_column(Float)
+    lexical_score: Mapped[float | None] = mapped_column(Float)
+    fusion_score: Mapped[float] = mapped_column(Float, nullable=False)
+    rerank_score: Mapped[float] = mapped_column(Float, nullable=False)
+    final_score: Mapped[float] = mapped_column(Float, nullable=False)
+    selected: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    source_id: Mapped[str | None] = mapped_column(String(16))
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class CitationRow(Base):
+    __tablename__ = "citations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "message_id", "ordinal"),
+        UniqueConstraint("tenant_id", "id"),
+        Index("citations_message_idx", "tenant_id", "message_id", "ordinal"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    message_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("messages.id"), nullable=False)
+    retrieval_run_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("retrieval_runs.id"), nullable=False
+    )
+    retrieval_hit_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("retrieval_hits.id"), nullable=False
+    )
+    ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
+    source_id: Mapped[str] = mapped_column(String(16), nullable=False)
+    document_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    document_version_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    document_title: Mapped[str] = mapped_column(String(300), nullable=False)
+    version_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_from: Mapped[int | None] = mapped_column(Integer)
+    page_to: Mapped[int | None] = mapped_column(Integer)
+    section_path: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    quote: Mapped[str] = mapped_column(Text, nullable=False)
+    relevance_score: Mapped[float] = mapped_column(Float, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class MessageFeedbackRow(Base):
+    __tablename__ = "message_feedback"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "message_id", "user_id"),
+        Index("message_feedback_message_idx", "tenant_id", "message_id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    message_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("messages.id"), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    rating: Mapped[int] = mapped_column(Integer, nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(64), nullable=False)
+    comment: Mapped[str | None] = mapped_column(String(2000))
+    snapshot: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class ModelInvocationRow(Base):
@@ -533,7 +683,12 @@ def seed_demo_data(session: Session, issuer: str) -> None:
                 tenant_id=DEMO_TENANT_ID,
                 code="employee",
                 name="员工",
-                permissions=["qa:ask", "qa:conversation:read", "qa:conversation:write"],
+                permissions=[
+                    "qa:ask",
+                    "qa:conversation:read",
+                    "qa:conversation:write",
+                    "qa:feedback",
+                ],
                 is_system=True,
             ),
             RoleRow(
@@ -541,7 +696,12 @@ def seed_demo_data(session: Session, issuer: str) -> None:
                 tenant_id=OTHER_TENANT_ID,
                 code="employee",
                 name="员工",
-                permissions=["qa:ask", "qa:conversation:read", "qa:conversation:write"],
+                permissions=[
+                    "qa:ask",
+                    "qa:conversation:read",
+                    "qa:conversation:write",
+                    "qa:feedback",
+                ],
                 is_system=True,
             ),
             RoleRow(
@@ -580,6 +740,10 @@ def seed_demo_data(session: Session, issuer: str) -> None:
 
 
 def _ensure_demo_knowledge_role(session: Session) -> None:
+    for role_id in (DEMO_ROLE_ID, OTHER_ROLE_ID):
+        employee_role = session.get(RoleRow, role_id)
+        if employee_role is not None and "qa:feedback" not in employee_role.permissions:
+            employee_role.permissions = [*employee_role.permissions, "qa:feedback"]
     role = session.get(RoleRow, DEMO_KNOWLEDGE_ROLE_ID)
     if role is None:
         session.add(
