@@ -1,9 +1,9 @@
 # Project Context
 
-> 状态：S5 企业治理闭环本地候选完成，生产条件待关闭  
-> 基线版本：s5-v1.0-local-candidate  
+> 状态：S6 本地工程 Gate 通过，真实数据/staging/production 仍为 NO-GO  
+> 基线版本：s6-v1.0-local-candidate  
 > 基线日期：2026-07-16  
-> 下一阶段：S6 生产化证据与真实企业集成（仍须逐项批准数据/环境）
+> 下一阶段：关闭 S6 生产阻断项后进入 S7 UAT、灰度发布与运营移交
 
 ## 1. 当前目标
 
@@ -44,6 +44,9 @@
 | S5 企业治理闭环 | 服务端目录态/group ACL、集中授权、配置门禁、DB 共享配额、哈希链、事件和控制台已实现 | `s5/README.md` |
 | S5 质量与验证 | Python/契约/迁移/Web 证据见报告；本地 structural evaluator 不代表真实业务质量 | `s5/07-test-and-verification-report.md` |
 | S5 Gate | 只条件通过 S6 合成/批准集成工作；生产仍 No-Go | `s5/08-s5-gate-review.md` |
+| S6 质量与可靠性 | 不可变评测运行、基线差异门禁、低基数 OTel、Prometheus/Grafana、SLO 告警、有界负载、故障和恢复工具已实现 | `s6/README.md` |
+| S6 质量与验证 | 72 tests + 35 subtests，88.84% coverage；Python/npm 已知漏洞 0；全栈 smoke、5 个故障场景、4 个恢复不变量通过 | `s6/08-test-and-verification-report.md` |
+| S6 Gate | 本地工程 PASS；合成/批准范围 CONDITIONAL GO；真实数据、staging、production NO-GO | `s6/09-s6-gate-review.md` |
 
 ## 3. 已接受技术基线
 
@@ -94,7 +97,7 @@
 
 ## 7. 当前开放问题
 
-阻断真实数据/生产承诺但不阻断 S5 合成开发的问题：
+阻断真实数据、staging 和生产承诺，但不阻断 S6 合成/公开/逐项批准范围维护的问题：
 
 - 真实业务 Owner、知识管理员、安全/法务和 SRE 的姓名与审批。
 - 企业 OIDC issuer、组织/组映射和禁用传播时限。
@@ -111,11 +114,20 @@
 
 ## 8. 下一步
 
-1. 进入 S6 前先接入批准的真实评测 Worker/黄金集/holdout/红队，不得复用 local structural passing 作为生产证据。
-2. Platform/API 完成跨实例取消协调，并对数据库共享配额做 PostgreSQL 锁/故障/容量测试；在此之前禁止多副本生产。
-3. 由用户/业务方回答 S0 开放问题；仅在批准后使用真实模型沙箱和非敏感资料运行基线实验。
-4. Platform/IAM 并行补齐企业 OIDC、GitHub dev 自动部署、Helm/Kubernetes、Ingress SSE 和负载验证。
-5. S6 变更必须引用 ADR、OpenAPI、本文件约束和 `s5/08-s5-gate-review.md`；任何真实数据、外部 Provider、IAM/SIEM 或部署写入需单独批准。
+1. 由 Product/Business/Data/Security 完成真实黄金集、holdout、claim verifier、红队方案和具名签字；不得复用 24 条合成结构评测作为业务质量证明。
+2. 将同步本地评测器替换为批准的异步 Worker，补齐队列幂等、超时、取消、重试和受控数据存储。
+3. Platform/IAM 接入企业 OIDC/SCIM、Secret/TLS/NetworkPolicy/Ingress，并完成目标集群 50 RPS、200 SSE、24 小时 soak 与故障切换。
+4. SRE/DBA 接入 Alertmanager/Pager、Trace/日志后端，完成 PostgreSQL PITR、对象版本与多区域隔离恢复演练。
+5. 只有 S6 Gate 阻断项关闭并完成具名签字后才能进入 S7；任何真实数据、外部 Provider、企业系统写入或公开发布均须单独授权。
+
+## S6 当前基线（覆盖文首旧阶段状态）
+
+- 当前版本：`s6-v1.0-local-candidate`，日期 2026-07-16；证据包：`docs/enterprise-qa-system/s6/`。
+- 已完成：0007 不可变评测运行、24 条合成固定集、基线差异门禁、usage/operations API、W3C Trace Context、低基数 OTel、Prometheus/Grafana、4 条带 Owner/Runbook 告警、有界负载、5 个 Fake Provider 故障场景和隔离恢复演练。
+- 验证证据：72 tests + 35 subtests、88.84% coverage；Ruff/mypy/ESLint/TypeScript/Next build 通过；Python/npm 已知漏洞 0；10 个 Compose 长期服务在线。
+- ADR 基线：ADR-001 至 ADR-043；S6 新增 ADR-038 至 ADR-043。
+- 关键限制：本机小样本不是容量证明，SQLite/本地目录恢复不是 PostgreSQL PITR/跨区域 DR，合成结构评测不代表真实业务质量，Prometheus 骨架未接企业 Pager/日志/Trace 后端。
+- Gate：本地工程 PASS；只允许合成、公开或逐项批准非敏感范围继续；真实数据、staging、production 仍 NO-GO；S6 上传 GitHub 需用户另行明确确认。
 
 ## 12. S5 当前基线（覆盖文首旧阶段状态）
 

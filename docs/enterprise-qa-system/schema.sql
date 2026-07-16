@@ -697,3 +697,35 @@ CREATE TABLE security_incidents (
     resolved_at timestamptz,
     UNIQUE (tenant_id, id)
 );
+
+-- S6 immutable, tenant-scoped evaluation evidence. Raw questions and answers are not stored.
+CREATE TABLE evaluation_runs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    dataset_version_id varchar(128) NOT NULL,
+    dataset_checksum char(64) NOT NULL,
+    candidate_config_ids jsonb NOT NULL,
+    candidate_config_snapshots jsonb NOT NULL,
+    baseline_run_id uuid,
+    status varchar(24) NOT NULL CHECK (status IN ('completed', 'failed')),
+    metrics jsonb NOT NULL,
+    thresholds jsonb NOT NULL,
+    deltas jsonb NOT NULL,
+    gate_result varchar(16) NOT NULL CHECK (gate_result IN ('passed', 'failed')),
+    failed_cases jsonb NOT NULL,
+    amount numeric(18,8) NOT NULL CHECK (amount >= 0),
+    currency char(3) NOT NULL,
+    code_revision varchar(128) NOT NULL,
+    evaluator_version varchar(64) NOT NULL,
+    tags jsonb NOT NULL,
+    error_code varchar(64),
+    created_by uuid NOT NULL,
+    started_at timestamptz NOT NULL DEFAULT now(),
+    completed_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, id)
+);
+CREATE INDEX evaluation_runs_tenant_created_idx
+    ON evaluation_runs (tenant_id, created_at DESC);
+CREATE INDEX evaluation_runs_tenant_gate_idx
+    ON evaluation_runs (tenant_id, gate_result, created_at DESC);

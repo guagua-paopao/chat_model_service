@@ -1,0 +1,80 @@
+phase: S6
+name: quality-observability-reliability-and-recovery-evidence
+version: s6-v1.0-local-candidate
+date: 2026-07-16
+status: local_engineering_pass_production_no_go
+data_scope: synthetic_public_or_explicitly_approved_non_sensitive_only
+
+implemented:
+  evaluation:
+    - immutable_tenant_scoped_runs
+    - dataset_and_candidate_snapshots
+    - baseline_delta_gate
+    - safe_failed_case_identifiers
+    - local_only_fail_closed_evaluator
+  observability:
+    - w3c_trace_context
+    - privacy_safe_low_cardinality_otel
+    - otlp_collector_prometheus_grafana
+    - four_owner_runbook_alert_rules
+    - bounded_process_diagnostic_snapshot
+  reliability:
+    - bounded_local_http_sse_load_harness
+    - deterministic_provider_fault_injection
+    - isolated_sqlite_object_restore_drill
+  api_version: 1.6.0-s6
+  migration_version: 20260716_0007
+
+decisions:
+  log: 10-decision-log.md
+  adrs: [ADR-038, ADR-039, ADR-040, ADR-041, ADR-042, ADR-043]
+
+verification:
+  python_tests: 72
+  python_subtests: 35
+  python_coverage_percent: 88.84
+  python_known_vulnerabilities: 0
+  npm_production_known_vulnerabilities: 0
+  canonical_yaml_files: 9
+  canonical_openapi_refs: 247
+  canonical_openapi_paths: 39
+  sqlite_migration_up_down_up: passed
+  postgresql_migration_head: 20260716_0007
+  next_lint_typecheck_build: passed
+  compose_config: passed
+  helm_lint: skipped_not_installed
+  compose_long_running_services: 10
+  prometheus_targets_up: 2
+  prometheus_rules: 4
+  s6_full_stack_smoke: passed
+  s4_evaluation_gate: passed
+  s4_full_stack_smoke: passed
+  s5_full_stack_smoke: passed
+  bounded_load_requests: 6
+  bounded_load_success_rate: 1.0
+  bounded_load_p95_ms: 74.88
+  deterministic_fault_scenarios: 5
+  recovery_invariants: 4
+  synthetic_rpo_seconds: 0.013
+  synthetic_rto_seconds: 0.118
+
+production_blockers:
+  - approved_business_golden_holdout_claim_verifier_and_red_team
+  - external_async_evaluation_worker_and_approved_dataset_storage
+  - enterprise_oidc_scim_secret_tls_network_policy_and_ingress
+  - real_provider_contract_privacy_cost_and_fault_drills
+  - target_cluster_50rps_200sse_ttft_soak_and_failover
+  - alertmanager_pager_trace_log_backend_named_on_call_drills
+  - postgresql_pitr_object_version_multi_region_restore
+  - worm_siem_anchor_billing_reconciliation_retention_and_supply_chain
+  - named_product_business_data_privacy_security_sre_dba_signoff
+
+gate:
+  local_engineering: pass
+  synthetic_or_individually_approved_work: conditional_go
+  real_data: no_go
+  staging: no_go
+  production: no_go
+
+publication: local_archive_only_until_explicit_user_confirmation_for_s6
+branch: codex/s6-quality-reliability

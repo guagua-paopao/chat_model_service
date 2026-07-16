@@ -81,6 +81,27 @@ class ContractTests(unittest.TestCase):
         )
         self.assertFalse(canonical_schema["additionalProperties"])
 
+    def test_s6_quality_reliability_paths_and_fields_match_contract(self) -> None:
+        runtime = create_app(settings()).openapi()
+        expected = {
+            "/api/v1/evaluations/runs",
+            "/api/v1/evaluations/runs/{run_id}",
+            "/api/v1/usage",
+            "/api/v1/admin/operations/snapshot",
+        }
+        self.assertTrue(expected.issubset(runtime["paths"]))
+        contract = yaml.safe_load(
+            Path("docs/enterprise-qa-system/openapi.yaml").read_text(encoding="utf-8")
+        )
+        for path in expected:
+            self.assertIn(path.removeprefix("/api/v1"), contract["paths"])
+        runtime_schema = runtime["components"]["schemas"]["EvaluationRunCreate"]
+        canonical_schema = contract["components"]["schemas"]["EvaluationRunCreate"]
+        self.assertEqual(
+            set(runtime_schema["properties"]), set(canonical_schema["properties"])
+        )
+        self.assertFalse(canonical_schema["additionalProperties"])
+
 
 if __name__ == "__main__":
     unittest.main()

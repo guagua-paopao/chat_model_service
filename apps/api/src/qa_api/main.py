@@ -65,7 +65,7 @@ from qa_api.models import (
     UsageResponse,
 )
 from qa_api.object_store import ObjectStoreError, build_object_store
-from qa_api.observability import RequestContextMiddleware, configure_logging
+from qa_api.observability import RequestContextMiddleware, Telemetry, configure_logging
 from qa_api.persistence import (
     Database,
     DocumentAclRow,
@@ -76,6 +76,8 @@ from qa_api.persistence import (
     utc_now,
 )
 from qa_api.policy import PolicyEngine
+from qa_api.quality import QualityService
+from qa_api.quality_api import build_quality_router
 from qa_api.rag import CitationView, RagService
 from qa_api.repositories import (
     ConversationRepository,
@@ -100,6 +102,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     embedding_adapter = build_embedding_adapter(resolved_settings)
     reranker = build_reranker(resolved_settings)
     policy = PolicyEngine()
+    telemetry = Telemetry(resolved_settings)
+    quality_service = QualityService(resolved_settings, telemetry)
     rag_service = RagService(
         settings=resolved_settings,
         session_factory=database.session_factory,
@@ -135,11 +139,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     extra={"event_fields": {"count": recovered}},
                 )
         yield
+        telemetry.shutdown()
         database.dispose()
 
     app = FastAPI(
         title="Enterprise QA API",
-        version="0.5.0-s5",
+        version="0.6.0-s6",
         openapi_url="/api/v1/openapi.json",
         docs_url="/api/v1/docs" if resolved_settings.app_env != "production" else None,
         redoc_url=None,
@@ -155,7 +160,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.ingestion_service = ingestion_service
     app.state.rag_service = rag_service
     app.state.policy_engine = policy
-    app.add_middleware(RequestContextMiddleware, settings=resolved_settings)
+    app.state.telemetry = telemetry
+    app.state.quality_service = quality_service
+    app.add_middleware(
+        RequestContextMiddleware, settings=resolved_settings, telemetry=telemetry
+    )
 
     def get_session() -> Iterator[Session]:
         yield from database.sessions()
@@ -744,6 +753,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(
         build_governance_router(
             settings=resolved_settings,
+            get_session=get_session,
+            get_principal=get_principal,
+            policy=policy,
+        )
+    )
+    app.include_router(
+        build_quality_router(
+            service=quality_service,
             get_session=get_session,
             get_principal=get_principal,
             policy=policy,

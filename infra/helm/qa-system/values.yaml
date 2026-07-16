@@ -4,7 +4,7 @@ api:
   replicaCount: 2
   image:
     repository: registry.example.invalid/enterprise-qa-api
-    tag: "0.4.0-s4"
+    tag: "0.6.0-s6"
     digest: ""
   resources:
     requests: {cpu: 100m, memory: 256Mi}
@@ -14,7 +14,7 @@ worker:
   replicaCount: 1
   image:
     repository: registry.example.invalid/enterprise-qa-worker
-    tag: "0.4.0-s4"
+    tag: "0.6.0-s6"
     digest: ""
   resources:
     requests: {cpu: 50m, memory: 128Mi}
@@ -24,7 +24,7 @@ web:
   replicaCount: 2
   image:
     repository: registry.example.invalid/enterprise-qa-web
-    tag: "0.4.0-s4"
+    tag: "0.6.0-s6"
     digest: ""
   resources:
     requests: {cpu: 50m, memory: 128Mi}
@@ -89,6 +89,11 @@ config:
   rerankerProviderBaseUrl: https://approved-model-gateway.example.invalid/v1
   rerankerProviderModel: approved-reranker-model
   rerankerTimeoutSeconds: 20
+  telemetryExportEnabled: true
+  otelExporterOtlpEndpoint: http://otel-collector.observability.svc.cluster.local:4317
+  otelServiceName: enterprise-qa-api
+  releaseRevision: 0.6.0-s6
+  telemetryMetricExportIntervalMs: 10000
 
 externalSecrets:
   secretName: enterprise-qa-runtime

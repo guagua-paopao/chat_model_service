@@ -425,6 +425,41 @@ class RagConfigEvaluationRow(Base):
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class EvaluationRunRow(Base):
+    __tablename__ = "evaluation_runs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        Index("evaluation_runs_tenant_created_idx", "tenant_id", "created_at"),
+        Index("evaluation_runs_tenant_gate_idx", "tenant_id", "gate_result", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    dataset_version_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    dataset_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    candidate_config_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    candidate_config_snapshots: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSON, nullable=False
+    )
+    baseline_run_id: Mapped[UUID | None] = mapped_column(Uuid)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    thresholds: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    deltas: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    gate_result: Mapped[str] = mapped_column(String(16), nullable=False)
+    failed_cases: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False)
+    code_revision: Mapped[str] = mapped_column(String(128), nullable=False)
+    evaluator_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    tags: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    error_code: Mapped[str | None] = mapped_column(String(64))
+    created_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
 class ConversationRow(Base):
     __tablename__ = "conversations"
     __table_args__ = (
@@ -1045,13 +1080,16 @@ def _ensure_s5_governance_seed(session: Session, issuer: str, settings: Settings
                 "qa:audit:verify",
                 "qa:security-incident:read",
                 "qa:security-incident:write",
+                "qa:evaluation:run",
+                "qa:evaluation:read",
+                "qa:operations:read",
             ],
         ),
         (
             CONFIG_APPROVER_ROLE_ID,
             "config_approver",
             "Independent configuration approver",
-            ["qa:rag-config:read", "qa:rag-config:approve"],
+            ["qa:rag-config:read", "qa:rag-config:approve", "qa:evaluation:read"],
         ),
         (
             AUDITOR_ROLE_ID,
@@ -1062,11 +1100,14 @@ def _ensure_s5_governance_seed(session: Session, issuer: str, settings: Settings
                 "qa:audit:verify",
                 "qa:usage:read",
                 "qa:security-incident:read",
+                "qa:evaluation:read",
+                "qa:operations:read",
             ],
         ),
     )
     for role_id, code, name, permissions in roles:
-        if session.get(RoleRow, role_id) is None:
+        role = session.get(RoleRow, role_id)
+        if role is None:
             session.add(
                 RoleRow(
                     id=role_id,
@@ -1077,6 +1118,8 @@ def _ensure_s5_governance_seed(session: Session, issuer: str, settings: Settings
                     is_system=True,
                 )
             )
+        else:
+            role.permissions = permissions
     session.flush()
 
     memberships = (
