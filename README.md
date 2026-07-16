@@ -7,6 +7,7 @@
 - [S0 发现与基线](docs/enterprise-qa-system/s0/README.md)
 - [S1 工程骨架、认证与租户](docs/enterprise-qa-system/s1/README.md)
 - [S2 Model Gateway 与流式聊天](docs/enterprise-qa-system/s2/README.md)
+- [S3 安全文档摄取与调试检索](docs/enterprise-qa-system/s3/README.md)
 
 建议从以下三份开始：
 
@@ -19,7 +20,7 @@
 - [OpenAPI 3.1](docs/enterprise-qa-system/openapi.yaml)
 - [PostgreSQL + pgvector 参考 DDL](docs/enterprise-qa-system/schema.sql)
 
-## S2 本地启动
+## S3 本地启动
 
 要求：Python 3.12、Node.js 22、Docker 26+。PowerShell 中执行：
 
@@ -43,7 +44,13 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/me -Headers @{Authorization="Bear
 浏览器端到端验证（需 Compose 已启动）：
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\smoke_s2.py
+.\.venv\Scripts\python.exe scripts\smoke_s3.py
 ```
 
-开发令牌和 Fake Provider 只允许 `local/test/dev`，生产配置会在启动时拒绝它们。S2 只提供通用模型回答，不使用企业知识或引用。完整教学、字段和故障注入见 [S2 开发手册](docs/enterprise-qa-system/s2/04-development-tutorial-and-fault-injection.md)。
+开发令牌、Fake Provider/Embedding 和签名扫描器只允许 `local/test/dev`，生产配置会在启动时拒绝它们。S3 的知识检索仍是 ACL 前置的调试能力，不提供聊天引用或拒答质量承诺。完整教学、字段和故障注入见 [S3 开发手册](docs/enterprise-qa-system/s3/04-development-tutorial-and-fault-injection.md)。
+
+## S3 当前基线
+
+S3 已完成安全文档摄取、不可变版本、PDF/DOCX/TXT/MD 解析、结构分块、异步 Worker、ACL 前置调试检索和原子发布。阶段证据包见 [S3 README](docs/enterprise-qa-system/s3/README.md)。
+
+S3 检索仍未连接聊天；聊天知识模式会明确返回 409。只允许使用合成、公开或明确批准的非敏感资料。生产还要求企业 OIDC/group、ClamAV、批准的 S3/Embedding/Model、共享 Redis 协调、Kubernetes、性能和恢复证据。

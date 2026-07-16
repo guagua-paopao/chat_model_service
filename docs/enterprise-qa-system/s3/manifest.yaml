@@ -1,0 +1,93 @@
+phase: S3
+name: secure-document-ingestion-and-debug-retrieval
+version: s3-v1.0
+date: 2026-07-16
+status: conditional_go_s4_synthetic_rag_development
+data_scope: synthetic_public_or_explicitly_approved_non_sensitive_only
+implemented:
+  api:
+    - POST_GET /api/v1/knowledge-bases
+    - POST /api/v1/knowledge-bases/{knowledge_base_id}/documents
+    - POST /api/v1/documents/{document_id}/versions
+    - PUT /api/v1/uploads/{version_id}/content local_adapter_only
+    - POST /api/v1/documents/{document_id}/upload-complete
+    - GET /api/v1/documents/{document_id}
+    - GET_POST /api/v1/ingestion-jobs/{job_id}[/retry]
+    - POST /api/v1/retrieval/search debug_only
+  storage:
+    - local_hmac_upload_adapter
+    - s3_minio_presigned_put_adapter
+    - quarantine_and_published_bucket_separation
+    - server_generated_uuid_object_keys
+  validation:
+    - size_and_sha256_recalculation
+    - mime_magic_and_parser_confirmation
+    - deterministic_signature_scanner_local_only
+    - clamav_instream_production_adapter
+  parsing:
+    - pdf_pypdf
+    - docx_defused_wordprocessingml
+    - txt_utf8
+    - markdown_headings
+    - unified_elements_with_page_and_section_provenance
+  indexing:
+    - structure_first_chunking
+    - versioned_parser_chunker_embedding_provenance
+    - deterministic_fake_embedding
+    - openai_compatible_embedding_adapter
+    - tenant_scoped_hash_reuse_and_batching
+    - staged_chunks_and_atomic_database_publication
+  worker:
+    - database_lease_claiming
+    - retry_backoff_and_dead_letter
+    - idempotent_stage_rebuild
+    - outbox_and_audit_records
+  security:
+    - tenant_scoped_services
+    - acl_before_ranking
+    - group_acl_fail_closed
+    - external_embedding_classification_guard
+    - production_fail_fast_for_fake_local_or_signature_backends
+  web:
+    - knowledge_base_creation
+    - browser_sha256_and_direct_upload
+    - job_polling_progress_and_safe_errors
+    - debug_retrieval_results
+    - explicit_not_connected_to_chat_notice
+decisions:
+  log: decision-log.md
+  adrs: [ADR-019, ADR-020, ADR-021, ADR-022, ADR-023, ADR-024]
+verification:
+  automated_tests: 45
+  ruff: passed
+  mypy_strict: passed
+  sqlite_migration_up_down_up: passed
+  migration_version: 20260716_0003
+  next_lint: passed
+  next_clean_container_build: passed
+  coverage_percent: 86
+  ingestion_coverage_percent: 88
+  openapi_and_yaml: passed_8_yaml_157_refs_19_paths
+  compose_config: passed
+  compose_full_stack: passed_postgresql_redis_minio_oidc_upload_worker_retrieval
+  python_known_vulnerabilities: 0
+  npm_known_vulnerabilities: 0
+  helm_cli_lint: not_run_cli_unavailable
+blocked_for_real_data_or_production:
+  - s0_data_owner_security_and_retention_approval
+  - enterprise_oidc_group_scim_and_revocation
+  - clamav_ha_parser_sandbox_and_malicious_corpus
+  - s3_iam_kms_tls_lifecycle_and_reconciliation
+  - s3_upload_size_enforcement_quota_and_quarantine_cleanup
+  - approved_embedding_provider_region_dpa_and_cost
+  - real_document_uat
+  - multi_worker_postgresql_load_and_lease_recovery
+  - s2_shared_redis_quota_and_cancellation
+  - kubernetes_ingress_network_policy_secret_manager
+  - performance_observability_backup_and_disaster_recovery
+next_phase: S4
+next_phase_allowed_scope:
+  - synthetic_acl_scoped_pgvector_and_full_text_retrieval
+  - deterministic_hybrid_fusion_and_reranking
+  - context_packing_grounded_generation_and_citations
+  - abstention_and_prompt_injection_evaluation

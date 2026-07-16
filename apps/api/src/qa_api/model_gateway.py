@@ -161,7 +161,7 @@ class DeterministicFakeAdapter:
         ]:
             clean_prompt = clean_prompt.removeprefix(directive).strip()
         answer = (
-            "这是 S2 通用模型演示回答，尚未使用企业知识或引用。"
+            "这是 S3 通用模型演示回答，知识检索尚未接入聊天或引用。"
             f"你输入的是：{clean_prompt or '空白演示问题'}"
         )
         chunks = [answer[index : index + 9] for index in range(0, len(answer), 9)]

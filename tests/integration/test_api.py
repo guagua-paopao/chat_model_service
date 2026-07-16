@@ -89,7 +89,7 @@ class ApiIntegrationTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["tenant"]["code"], "demo_corp")
-        self.assertEqual(body["roles"], ["employee"])
+        self.assertEqual(body["roles"], ["employee", "knowledge_admin"])
         self.assertIn("qa:conversation:write", body["permissions"])
         self.assertNotIn("email", body)
 

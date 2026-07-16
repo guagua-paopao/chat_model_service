@@ -190,6 +190,242 @@ class ModelListResponse(StrictModel):
     items: list[ModelSummary]
 
 
+Classification = Literal["public", "internal", "confidential", "restricted"]
+
+
+class KnowledgeBaseCreate(StrictModel):
+    code: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,63}$")
+    name: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    classification: Classification = "internal"
+
+    @field_validator("name")
+    @classmethod
+    def name_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("name must not be blank")
+        return value
+
+
+class KnowledgeBaseResponse(StrictModel):
+    id: UUID
+    code: str
+    name: str
+    description: str | None
+    classification: Classification
+    status: Literal["active", "archived"]
+    created_at: datetime
+    updated_at: datetime
+
+
+class KnowledgeBaseListResponse(StrictModel):
+    items: list[KnowledgeBaseResponse]
+
+
+class DocumentAclEntry(StrictModel):
+    subject_type: Literal["user", "group", "role"]
+    subject_id: str = Field(min_length=1, max_length=128)
+    permission: Literal["read"] = "read"
+
+    @field_validator("subject_id")
+    @classmethod
+    def subject_id_is_safe(cls, value: str) -> str:
+        value = value.strip()
+        if not value or any(character.isspace() for character in value):
+            raise ValueError("subject_id must be a non-blank identifier without whitespace")
+        return value
+
+
+class DocumentCreate(StrictModel):
+    title: str = Field(min_length=1, max_length=300)
+    filename: str = Field(min_length=1, max_length=255)
+    mime_type: Literal[
+        "text/plain",
+        "text/markdown",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+    size_bytes: int = Field(ge=1, le=104_857_600)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    classification: Classification
+    acl: list[DocumentAclEntry] = Field(min_length=1, max_length=100)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("title", "filename")
+    @classmethod
+    def text_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("value must not be blank")
+        return value
+
+    @field_validator("filename")
+    @classmethod
+    def filename_is_not_a_path(cls, value: str) -> str:
+        if "/" in value or "\\" in value or any(ord(character) < 32 for character in value):
+            raise ValueError("filename must not contain path separators or control characters")
+        return value
+
+    @field_validator("acl")
+    @classmethod
+    def acl_is_unique(cls, value: list[DocumentAclEntry]) -> list[DocumentAclEntry]:
+        keys = {(item.subject_type, item.subject_id, item.permission) for item in value}
+        if len(keys) != len(value):
+            raise ValueError("acl entries must be unique")
+        return value
+
+    @field_validator("metadata")
+    @classmethod
+    def metadata_is_bounded(cls, value: dict[str, Any]) -> dict[str, Any]:
+        if len(value) > 20:
+            raise ValueError("metadata may contain at most 20 properties")
+        return value
+
+
+class DocumentVersionCreate(StrictModel):
+    filename: str = Field(min_length=1, max_length=255)
+    mime_type: Literal[
+        "text/plain",
+        "text/markdown",
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ]
+    size_bytes: int = Field(ge=1, le=104_857_600)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("filename")
+    @classmethod
+    def filename_is_safe(cls, value: str) -> str:
+        value = value.strip()
+        if (
+            not value
+            or "/" in value
+            or "\\" in value
+            or any(ord(character) < 32 for character in value)
+        ):
+            raise ValueError("filename must be a name, not a path")
+        return value
+
+
+class DocumentVersionResponse(StrictModel):
+    id: UUID
+    version_no: int
+    filename: str
+    declared_mime_type: str
+    detected_mime_type: str | None
+    declared_size_bytes: int
+    actual_size_bytes: int | None
+    declared_sha256: str
+    actual_sha256: str | None
+    status: Literal[
+        "awaiting_upload", "queued", "processing", "published", "failed", "archived"
+    ]
+    parser_version: str | None
+    chunker_version: str | None
+    embedding_model: str | None
+    page_count: int | None
+    chunk_count: int | None
+    token_count: int | None
+    created_at: datetime
+    published_at: datetime | None
+
+
+class DocumentUploadResponse(StrictModel):
+    document_id: UUID
+    version: DocumentVersionResponse
+    upload_url: str
+    upload_method: Literal["PUT"] = "PUT"
+    upload_headers: dict[str, str]
+    upload_expires_at: datetime
+
+
+class UploadReceiptResponse(StrictModel):
+    version_id: UUID
+    status: Literal["uploaded"] = "uploaded"
+
+
+class UploadCompleteRequest(StrictModel):
+    version_id: UUID
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class IngestionJobResponse(StrictModel):
+    id: UUID
+    document_id: UUID
+    version_id: UUID
+    status: Literal["queued", "running", "completed", "failed", "dead_letter"]
+    stage: Literal[
+        "queued", "scanning", "parsing", "chunking", "embedding", "publishing", "completed"
+    ]
+    progress: int = Field(ge=0, le=100)
+    attempt: int = Field(ge=0)
+    max_attempts: int = Field(ge=1)
+    metrics: dict[str, Any]
+    error_code: str | None
+    error_detail: str | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+
+class DocumentDetailResponse(StrictModel):
+    id: UUID
+    knowledge_base_id: UUID
+    title: str
+    classification: Classification
+    status: Literal["awaiting_upload", "processing", "ready", "failed", "archived"]
+    current_version_id: UUID | None
+    metadata: dict[str, Any]
+    acl: list[DocumentAclEntry]
+    versions: list[DocumentVersionResponse]
+    latest_job: IngestionJobResponse | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class RetrievalSearchRequest(StrictModel):
+    query: str = Field(min_length=1, max_length=1000)
+    kb_ids: list[UUID] = Field(min_length=1, max_length=10)
+    top_k: int = Field(default=5, ge=1, le=20)
+    include_content: bool = False
+    filters: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("query")
+    @classmethod
+    def query_not_blank(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("query must not be blank")
+        return value
+
+    @field_validator("kb_ids")
+    @classmethod
+    def kb_ids_are_unique(cls, value: list[UUID]) -> list[UUID]:
+        if len(set(value)) != len(value):
+            raise ValueError("kb_ids must be unique")
+        return value
+
+
+class RetrievalSearchHit(StrictModel):
+    chunk_id: UUID
+    document_id: UUID
+    document_version_id: UUID
+    document_title: str
+    score: float
+    page_from: int | None
+    page_to: int | None
+    section_path: list[str]
+    content: str | None
+
+
+class RetrievalSearchResponse(StrictModel):
+    items: list[RetrievalSearchHit]
+    total_candidates: int
+    acl_filtered: bool = True
+    stage: Literal["debug_only_not_connected_to_chat"] = "debug_only_not_connected_to_chat"
+
+
 class Problem(StrictModel):
     type: str
     title: str

@@ -16,5 +16,18 @@ spec:
         - name: worker
           image: {{ include "enterprise-qa.image" (list .Values.worker.image .) }}
           envFrom: [{configMapRef: {name: enterprise-qa-config}}]
+          env:
+            - name: QA_DATABASE_URL
+              valueFrom: {secretKeyRef: {name: {{ .Values.externalSecrets.secretName }}, key: {{ .Values.externalSecrets.databaseUrlKey }}}}
+            - name: QA_CURSOR_SIGNING_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.externalSecrets.secretName }}, key: {{ .Values.externalSecrets.cursorSigningKeyKey }}}}
+            - name: QA_MODEL_PROVIDER_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.externalSecrets.secretName }}, key: {{ .Values.externalSecrets.modelApiKeyKey }}}}
+            - name: QA_OBJECT_STORE_ACCESS_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.externalSecrets.secretName }}, key: {{ .Values.externalSecrets.objectStoreAccessKeyKey }}}}
+            - name: QA_OBJECT_STORE_SECRET_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.externalSecrets.secretName }}, key: {{ .Values.externalSecrets.objectStoreSecretKeyKey }}}}
+            - name: QA_EMBEDDING_PROVIDER_API_KEY
+              valueFrom: {secretKeyRef: {name: {{ .Values.externalSecrets.secretName }}, key: {{ .Values.externalSecrets.embeddingApiKeyKey }}}}
           securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: ["ALL"]}}
           resources: {{- toYaml .Values.worker.resources | nindent 12 }}

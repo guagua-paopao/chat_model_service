@@ -47,6 +47,34 @@ class Settings:
     chat_max_input_tokens: int = 4_096
     chat_max_output_tokens: int = 1_024
     fake_model_chunk_delay_ms: int = 40
+    object_store_backend: str = "local"
+    object_store_local_root: str = ".local/objects"
+    object_store_endpoint_url: str | None = None
+    object_store_public_endpoint_url: str | None = None
+    object_store_region: str = "us-east-1"
+    object_store_access_key: str | None = None
+    object_store_secret_key: str | None = None
+    object_store_quarantine_bucket: str = "qa-quarantine"
+    object_store_published_bucket: str = "qa-published"
+    object_store_auto_create_buckets: bool = True
+    upload_public_base_url: str = "http://127.0.0.1:3000/api/qa"
+    upload_presign_seconds: int = 900
+    ingestion_max_upload_bytes: int = 10_485_760
+    ingestion_max_attempts: int = 3
+    ingestion_job_lease_seconds: int = 120
+    ingestion_worker_poll_seconds: float = 1.0
+    malware_scanner_backend: str = "signature"
+    clamav_host: str | None = None
+    clamav_port: int = 3310
+    clamav_timeout_seconds: float = 15.0
+    chunk_max_tokens: int = 256
+    chunk_overlap_tokens: int = 32
+    fake_embedding_enabled: bool = False
+    embedding_provider_enabled: bool = False
+    embedding_provider_base_url: str | None = None
+    embedding_provider_api_key: str | None = None
+    embedding_provider_model: str | None = None
+    embedding_dimensions: int = 16
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -89,6 +117,57 @@ class Settings:
             chat_max_input_tokens=int(os.getenv("QA_CHAT_MAX_INPUT_TOKENS", "4096")),
             chat_max_output_tokens=int(os.getenv("QA_CHAT_MAX_OUTPUT_TOKENS", "1024")),
             fake_model_chunk_delay_ms=int(os.getenv("QA_FAKE_MODEL_CHUNK_DELAY_MS", "40")),
+            object_store_backend=os.getenv("QA_OBJECT_STORE_BACKEND", "local").strip().lower(),
+            object_store_local_root=os.getenv("QA_OBJECT_STORE_LOCAL_ROOT", ".local/objects"),
+            object_store_endpoint_url=os.getenv("QA_OBJECT_STORE_ENDPOINT_URL") or None,
+            object_store_public_endpoint_url=(
+                os.getenv("QA_OBJECT_STORE_PUBLIC_ENDPOINT_URL") or None
+            ),
+            object_store_region=os.getenv("QA_OBJECT_STORE_REGION", "us-east-1"),
+            object_store_access_key=os.getenv("QA_OBJECT_STORE_ACCESS_KEY") or None,
+            object_store_secret_key=os.getenv("QA_OBJECT_STORE_SECRET_KEY") or None,
+            object_store_quarantine_bucket=os.getenv(
+                "QA_OBJECT_STORE_QUARANTINE_BUCKET", "qa-quarantine"
+            ),
+            object_store_published_bucket=os.getenv(
+                "QA_OBJECT_STORE_PUBLISHED_BUCKET", "qa-published"
+            ),
+            object_store_auto_create_buckets=_as_bool(
+                os.getenv("QA_OBJECT_STORE_AUTO_CREATE_BUCKETS"),
+                app_env in {"local", "test", "dev"},
+            ),
+            upload_public_base_url=os.getenv(
+                "QA_UPLOAD_PUBLIC_BASE_URL", "http://127.0.0.1:3000/api/qa"
+            ),
+            upload_presign_seconds=int(os.getenv("QA_UPLOAD_PRESIGN_SECONDS", "900")),
+            ingestion_max_upload_bytes=int(
+                os.getenv("QA_INGESTION_MAX_UPLOAD_BYTES", "10485760")
+            ),
+            ingestion_max_attempts=int(os.getenv("QA_INGESTION_MAX_ATTEMPTS", "3")),
+            ingestion_job_lease_seconds=int(
+                os.getenv("QA_INGESTION_JOB_LEASE_SECONDS", "120")
+            ),
+            ingestion_worker_poll_seconds=float(
+                os.getenv("QA_INGESTION_WORKER_POLL_SECONDS", "1")
+            ),
+            malware_scanner_backend=os.getenv(
+                "QA_MALWARE_SCANNER_BACKEND", "signature"
+            ).strip().lower(),
+            clamav_host=os.getenv("QA_CLAMAV_HOST") or None,
+            clamav_port=int(os.getenv("QA_CLAMAV_PORT", "3310")),
+            clamav_timeout_seconds=float(os.getenv("QA_CLAMAV_TIMEOUT_SECONDS", "15")),
+            chunk_max_tokens=int(os.getenv("QA_CHUNK_MAX_TOKENS", "256")),
+            chunk_overlap_tokens=int(os.getenv("QA_CHUNK_OVERLAP_TOKENS", "32")),
+            fake_embedding_enabled=_as_bool(
+                os.getenv("QA_FAKE_EMBEDDING_ENABLED"), app_env in {"local", "test", "dev"}
+            ),
+            embedding_provider_enabled=_as_bool(
+                os.getenv("QA_EMBEDDING_PROVIDER_ENABLED"), False
+            ),
+            embedding_provider_base_url=os.getenv("QA_EMBEDDING_PROVIDER_BASE_URL") or None,
+            embedding_provider_api_key=os.getenv("QA_EMBEDDING_PROVIDER_API_KEY") or None,
+            embedding_provider_model=os.getenv("QA_EMBEDDING_PROVIDER_MODEL") or None,
+            embedding_dimensions=int(os.getenv("QA_EMBEDDING_DIMENSIONS", "16")),
         )
         return settings.validated()
 
@@ -147,4 +226,60 @@ class Settings:
             raise ValueError("QA_CHAT_MAX_OUTPUT_TOKENS is outside the supported range")
         if not 0 <= self.fake_model_chunk_delay_ms <= 10_000:
             raise ValueError("QA_FAKE_MODEL_CHUNK_DELAY_MS must be between 0 and 10000")
+        if self.object_store_backend not in {"local", "s3"}:
+            raise ValueError("QA_OBJECT_STORE_BACKEND must be local or s3")
+        if self.app_env in {"staging", "production"} and self.object_store_backend == "local":
+            raise ValueError("local object storage is forbidden outside local/test/dev")
+        if self.object_store_backend == "s3":
+            if not self.object_store_endpoint_url or not self.object_store_public_endpoint_url:
+                raise ValueError("S3 internal and public endpoints are required")
+            if self.app_env in {"staging", "production"} and (
+                not self.object_store_endpoint_url.startswith("https://")
+                or not self.object_store_public_endpoint_url.startswith("https://")
+            ):
+                raise ValueError("production object storage endpoints must use https")
+            if not self.object_store_access_key or not self.object_store_secret_key:
+                raise ValueError("S3 object storage credentials are required")
+        if self.object_store_quarantine_bucket == self.object_store_published_bucket:
+            raise ValueError("quarantine and published buckets must be different")
+        if self.app_env in {"staging", "production"} and self.object_store_auto_create_buckets:
+            raise ValueError("production buckets must be provisioned outside the application")
+        if not 60 <= self.upload_presign_seconds <= 3_600:
+            raise ValueError("QA_UPLOAD_PRESIGN_SECONDS must be between 60 and 3600")
+        if not 1_048_576 <= self.ingestion_max_upload_bytes <= 104_857_600:
+            raise ValueError("QA_INGESTION_MAX_UPLOAD_BYTES must be between 1 MiB and 100 MiB")
+        if not 1 <= self.ingestion_max_attempts <= 10:
+            raise ValueError("QA_INGESTION_MAX_ATTEMPTS must be between 1 and 10")
+        if not 30 <= self.ingestion_job_lease_seconds <= 3_600:
+            raise ValueError("QA_INGESTION_JOB_LEASE_SECONDS must be between 30 and 3600")
+        if not 0.1 <= self.ingestion_worker_poll_seconds <= 60:
+            raise ValueError("QA_INGESTION_WORKER_POLL_SECONDS must be between 0.1 and 60")
+        if self.malware_scanner_backend not in {"signature", "clamav"}:
+            raise ValueError("QA_MALWARE_SCANNER_BACKEND must be signature or clamav")
+        if self.app_env in {"staging", "production"} and self.malware_scanner_backend != "clamav":
+            raise ValueError("an external ClamAV scanner is required outside local development")
+        if self.malware_scanner_backend == "clamav" and not self.clamav_host:
+            raise ValueError("QA_CLAMAV_HOST is required when ClamAV scanning is enabled")
+        if not 1 <= self.clamav_port <= 65_535:
+            raise ValueError("QA_CLAMAV_PORT is invalid")
+        if not 0.1 <= self.clamav_timeout_seconds <= 120:
+            raise ValueError("QA_CLAMAV_TIMEOUT_SECONDS must be between 0.1 and 120")
+        if not 64 <= self.chunk_max_tokens <= 2_048:
+            raise ValueError("QA_CHUNK_MAX_TOKENS must be between 64 and 2048")
+        if not 0 <= self.chunk_overlap_tokens < self.chunk_max_tokens:
+            raise ValueError("chunk overlap must be lower than chunk max tokens")
+        if self.app_env in {"staging", "production"} and self.fake_embedding_enabled:
+            raise ValueError("fake embeddings are forbidden outside local/test/dev")
+        if self.embedding_provider_enabled:
+            if (
+                not self.embedding_provider_base_url
+                or not self.embedding_provider_base_url.startswith("https://")
+            ):
+                raise ValueError("QA_EMBEDDING_PROVIDER_BASE_URL must be an https URL")
+            if not self.embedding_provider_api_key or not self.embedding_provider_model:
+                raise ValueError("embedding provider key and model are required")
+        if self.app_env in {"staging", "production"} and not self.embedding_provider_enabled:
+            raise ValueError("an approved embedding provider is required outside local development")
+        if not 8 <= self.embedding_dimensions <= 4_096:
+            raise ValueError("QA_EMBEDDING_DIMENSIONS must be between 8 and 4096")
         return self

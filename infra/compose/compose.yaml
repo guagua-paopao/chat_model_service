@@ -36,6 +36,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${QA_WEB_PUBLIC_URL:-http://127.0.0.1:3000}
     volumes:
       - minio_data:/data
     healthcheck:
@@ -44,8 +45,11 @@ services:
       timeout: 5s
       retries: 20
     ports:
+      - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
-    networks: [backend]
+    # The browser uses the public presigned endpoint. Attach MinIO to a
+    # non-internal network so Docker Desktop can publish 9000/9001 locally.
+    networks: [frontend, backend]
 
   fake-idp:
     build:
@@ -88,6 +92,18 @@ services:
       QA_CHAT_REQUESTS_PER_MINUTE: "30"
       QA_CHAT_TENANT_CONCURRENCY: "8"
       QA_CHAT_USER_CONCURRENCY: "2"
+      QA_OBJECT_STORE_BACKEND: s3
+      QA_OBJECT_STORE_ENDPOINT_URL: http://minio:9000
+      QA_OBJECT_STORE_PUBLIC_ENDPOINT_URL: http://127.0.0.1:9000
+      QA_OBJECT_STORE_ACCESS_KEY: ${MINIO_ROOT_USER:?set MINIO_ROOT_USER in .env}
+      QA_OBJECT_STORE_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD in .env}
+      QA_OBJECT_STORE_QUARANTINE_BUCKET: qa-quarantine
+      QA_OBJECT_STORE_PUBLISHED_BUCKET: qa-published
+      QA_OBJECT_STORE_AUTO_CREATE_BUCKETS: "true"
+      QA_MALWARE_SCANNER_BACKEND: signature
+      QA_FAKE_EMBEDDING_ENABLED: "true"
+      QA_EMBEDDING_PROVIDER_ENABLED: "false"
+      QA_EMBEDDING_DIMENSIONS: "16"
     depends_on:
       postgres:
         condition: service_healthy
@@ -118,19 +134,23 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-    networks: [backend]
+    # Keep backend service discovery while allowing the documented local
+    # 127.0.0.1:8000 developer endpoint to be published by Docker Desktop.
+    networks: [frontend, backend]
 
   worker:
     build:
       context: ../..
       dockerfile: apps/worker/Dockerfile
     environment:
-      QA_APP_ENV: local
-      QA_LOG_LEVEL: INFO
+      <<: *api_environment
+      QA_SEED_DEMO_DATA: "false"
       QA_REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
     depends_on:
-      redis:
+      migrate:
+        condition: service_completed_successfully
+      minio:
         condition: service_healthy
     networks: [backend]
 
