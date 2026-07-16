@@ -94,6 +94,7 @@ class Settings:
     reranker_timeout_seconds: float = 20.0
     local_governance_evaluator_enabled: bool = True
     local_quality_evaluator_enabled: bool = True
+    local_release_orchestrator_enabled: bool = True
     telemetry_export_enabled: bool = False
     otel_exporter_otlp_endpoint: str | None = None
     otel_service_name: str = "enterprise-qa-api"
@@ -126,9 +127,7 @@ class Settings:
             model_provider_base_url=os.getenv("QA_MODEL_PROVIDER_BASE_URL") or None,
             model_provider_api_key=os.getenv("QA_MODEL_PROVIDER_API_KEY") or None,
             model_provider_model=os.getenv("QA_MODEL_PROVIDER_MODEL") or None,
-            model_connect_timeout_seconds=float(
-                os.getenv("QA_MODEL_CONNECT_TIMEOUT_SECONDS", "5")
-            ),
+            model_connect_timeout_seconds=float(os.getenv("QA_MODEL_CONNECT_TIMEOUT_SECONDS", "5")),
             model_first_token_timeout_seconds=float(
                 os.getenv("QA_MODEL_FIRST_TOKEN_TIMEOUT_SECONDS", "10")
             ),
@@ -164,19 +163,13 @@ class Settings:
                 "QA_UPLOAD_PUBLIC_BASE_URL", "http://127.0.0.1:3000/api/qa"
             ),
             upload_presign_seconds=int(os.getenv("QA_UPLOAD_PRESIGN_SECONDS", "900")),
-            ingestion_max_upload_bytes=int(
-                os.getenv("QA_INGESTION_MAX_UPLOAD_BYTES", "10485760")
-            ),
+            ingestion_max_upload_bytes=int(os.getenv("QA_INGESTION_MAX_UPLOAD_BYTES", "10485760")),
             ingestion_max_attempts=int(os.getenv("QA_INGESTION_MAX_ATTEMPTS", "3")),
-            ingestion_job_lease_seconds=int(
-                os.getenv("QA_INGESTION_JOB_LEASE_SECONDS", "120")
-            ),
-            ingestion_worker_poll_seconds=float(
-                os.getenv("QA_INGESTION_WORKER_POLL_SECONDS", "1")
-            ),
-            malware_scanner_backend=os.getenv(
-                "QA_MALWARE_SCANNER_BACKEND", "signature"
-            ).strip().lower(),
+            ingestion_job_lease_seconds=int(os.getenv("QA_INGESTION_JOB_LEASE_SECONDS", "120")),
+            ingestion_worker_poll_seconds=float(os.getenv("QA_INGESTION_WORKER_POLL_SECONDS", "1")),
+            malware_scanner_backend=os.getenv("QA_MALWARE_SCANNER_BACKEND", "signature")
+            .strip()
+            .lower(),
             clamav_host=os.getenv("QA_CLAMAV_HOST") or None,
             clamav_port=int(os.getenv("QA_CLAMAV_PORT", "3310")),
             clamav_timeout_seconds=float(os.getenv("QA_CLAMAV_TIMEOUT_SECONDS", "15")),
@@ -185,31 +178,19 @@ class Settings:
             fake_embedding_enabled=_as_bool(
                 os.getenv("QA_FAKE_EMBEDDING_ENABLED"), app_env in {"local", "test", "dev"}
             ),
-            embedding_provider_enabled=_as_bool(
-                os.getenv("QA_EMBEDDING_PROVIDER_ENABLED"), False
-            ),
+            embedding_provider_enabled=_as_bool(os.getenv("QA_EMBEDDING_PROVIDER_ENABLED"), False),
             embedding_provider_base_url=os.getenv("QA_EMBEDDING_PROVIDER_BASE_URL") or None,
             embedding_provider_api_key=os.getenv("QA_EMBEDDING_PROVIDER_API_KEY") or None,
             embedding_provider_model=os.getenv("QA_EMBEDDING_PROVIDER_MODEL") or None,
             embedding_dimensions=int(os.getenv("QA_EMBEDDING_DIMENSIONS", "16")),
             rag_enabled=_as_bool(os.getenv("QA_RAG_ENABLED"), True),
-            retrieval_vector_candidates=int(
-                os.getenv("QA_RETRIEVAL_VECTOR_CANDIDATES", "20")
-            ),
-            retrieval_lexical_candidates=int(
-                os.getenv("QA_RETRIEVAL_LEXICAL_CANDIDATES", "20")
-            ),
-            retrieval_rerank_candidates=int(
-                os.getenv("QA_RETRIEVAL_RERANK_CANDIDATES", "12")
-            ),
+            retrieval_vector_candidates=int(os.getenv("QA_RETRIEVAL_VECTOR_CANDIDATES", "20")),
+            retrieval_lexical_candidates=int(os.getenv("QA_RETRIEVAL_LEXICAL_CANDIDATES", "20")),
+            retrieval_rerank_candidates=int(os.getenv("QA_RETRIEVAL_RERANK_CANDIDATES", "12")),
             retrieval_final_k=int(os.getenv("QA_RETRIEVAL_FINAL_K", "5")),
             retrieval_rrf_k=int(os.getenv("QA_RETRIEVAL_RRF_K", "60")),
-            retrieval_context_max_tokens=int(
-                os.getenv("QA_RETRIEVAL_CONTEXT_MAX_TOKENS", "1200")
-            ),
-            retrieval_min_relevance=float(
-                os.getenv("QA_RETRIEVAL_MIN_RELEVANCE", "0.28")
-            ),
+            retrieval_context_max_tokens=int(os.getenv("QA_RETRIEVAL_CONTEXT_MAX_TOKENS", "1200")),
+            retrieval_min_relevance=float(os.getenv("QA_RETRIEVAL_MIN_RELEVANCE", "0.28")),
             retrieval_min_query_coverage=float(
                 os.getenv("QA_RETRIEVAL_MIN_QUERY_COVERAGE", "0.34")
             ),
@@ -217,9 +198,7 @@ class Settings:
             fake_reranker_enabled=_as_bool(
                 os.getenv("QA_FAKE_RERANKER_ENABLED"), app_env in {"local", "test", "dev"}
             ),
-            reranker_provider_enabled=_as_bool(
-                os.getenv("QA_RERANKER_PROVIDER_ENABLED"), False
-            ),
+            reranker_provider_enabled=_as_bool(os.getenv("QA_RERANKER_PROVIDER_ENABLED"), False),
             reranker_provider_base_url=os.getenv("QA_RERANKER_PROVIDER_BASE_URL") or None,
             reranker_provider_api_key=os.getenv("QA_RERANKER_PROVIDER_API_KEY") or None,
             reranker_provider_model=os.getenv("QA_RERANKER_PROVIDER_MODEL") or None,
@@ -232,9 +211,11 @@ class Settings:
                 os.getenv("QA_LOCAL_QUALITY_EVALUATOR_ENABLED"),
                 app_env in {"local", "test", "dev"},
             ),
-            telemetry_export_enabled=_as_bool(
-                os.getenv("QA_TELEMETRY_EXPORT_ENABLED"), False
+            local_release_orchestrator_enabled=_as_bool(
+                os.getenv("QA_LOCAL_RELEASE_ORCHESTRATOR_ENABLED"),
+                app_env in {"local", "test", "dev"},
             ),
+            telemetry_export_enabled=_as_bool(os.getenv("QA_TELEMETRY_EXPORT_ENABLED"), False),
             otel_exporter_otlp_endpoint=(
                 os.getenv("QA_OTEL_EXPORTER_OTLP_ENDPOINT")
                 or os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -398,6 +379,8 @@ class Settings:
             raise ValueError("the local governance evaluator is forbidden outside development")
         if self.app_env in {"staging", "production"} and self.local_quality_evaluator_enabled:
             raise ValueError("the local quality evaluator is forbidden outside development")
+        if self.app_env in {"staging", "production"} and self.local_release_orchestrator_enabled:
+            raise ValueError("the local release orchestrator is forbidden outside development")
         if self.telemetry_export_enabled and not self.otel_exporter_otlp_endpoint:
             raise ValueError("QA_OTEL_EXPORTER_OTLP_ENDPOINT is required for telemetry export")
         if not 1_000 <= self.telemetry_metric_export_interval_ms <= 300_000:

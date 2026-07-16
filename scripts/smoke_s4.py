@@ -97,9 +97,7 @@ def main() -> int:
         )
     job = completed_upload.json()
     for _ in range(90):
-        job_response = session.get(
-            f"{base_url}/api/qa/ingestion-jobs/{job['id']}", timeout=10
-        )
+        job_response = session.get(f"{base_url}/api/qa/ingestion-jobs/{job['id']}", timeout=10)
         if job_response.status_code != 200:
             return fail(f"job read failed: {job_response.status_code} {job_response.text}")
         job = job_response.json()

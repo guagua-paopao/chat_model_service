@@ -72,9 +72,7 @@ class GovernanceIntegrationTests(unittest.TestCase):
             },
         )
         self.assertEqual(activated.status_code, 200, activated.text)
-        active_identity = self.client.get(
-            "/api/v1/me", headers=self.auth("disabled-employee")
-        )
+        active_identity = self.client.get("/api/v1/me", headers=self.auth("disabled-employee"))
         self.assertEqual(active_identity.status_code, 200, active_identity.text)
         disabled = self.client.patch(
             f"/api/v1/admin/users/{DISABLED_USER_ID}",
@@ -91,9 +89,7 @@ class GovernanceIntegrationTests(unittest.TestCase):
         self.assertEqual(rejected.json()["code"], "USER_DISABLED")
 
     def test_config_gate_separation_publish_and_rollback(self) -> None:
-        baseline = self.client.get(
-            "/api/v1/admin/rag-configs", headers=self.governance
-        )
+        baseline = self.client.get("/api/v1/admin/rag-configs", headers=self.governance)
         self.assertEqual(baseline.status_code, 200, baseline.text)
         baseline_row = baseline.json()["items"][0]
         draft = self.client.post(
@@ -267,9 +263,7 @@ class GovernanceIntegrationTests(unittest.TestCase):
         self.assertGreaterEqual(len(search.json()["items"]), 1)
 
     def test_quota_incident_observability_and_tamper_detection(self) -> None:
-        quota = self.client.get(
-            "/api/v1/admin/quota-policies/tenant", headers=self.governance
-        )
+        quota = self.client.get("/api/v1/admin/quota-policies/tenant", headers=self.governance)
         self.assertEqual(quota.status_code, 200, quota.text)
         body = quota.json()
         updated = self.client.patch(
@@ -290,9 +284,9 @@ class GovernanceIntegrationTests(unittest.TestCase):
 
         owner = next(
             item["id"]
-            for item in self.client.get(
-                "/api/v1/admin/users", headers=self.governance
-            ).json()["items"]
+            for item in self.client.get("/api/v1/admin/users", headers=self.governance).json()[
+                "items"
+            ]
             if item["subject"] == "governance-admin"
         )
         incident = self.client.post(
@@ -322,9 +316,7 @@ class GovernanceIntegrationTests(unittest.TestCase):
             response = self.client.get(f"/api/v1/admin/{path}", headers=self.auditor)
             self.assertEqual(response.status_code, 200, response.text)
 
-        integrity = self.client.get(
-            "/api/v1/admin/audit-logs/integrity", headers=self.auditor
-        )
+        integrity = self.client.get("/api/v1/admin/audit-logs/integrity", headers=self.auditor)
         self.assertEqual(integrity.status_code, 200, integrity.text)
         self.assertTrue(integrity.json()["valid"])
         logs = self.client.get("/api/v1/admin/audit-logs", headers=self.auditor)
@@ -341,9 +333,7 @@ class GovernanceIntegrationTests(unittest.TestCase):
             assert first is not None
             first.reason = "tampered"
             session.commit()
-        detected = self.client.get(
-            "/api/v1/admin/audit-logs/integrity", headers=self.auditor
-        )
+        detected = self.client.get("/api/v1/admin/audit-logs/integrity", headers=self.auditor)
         self.assertEqual(detected.status_code, 200, detected.text)
         self.assertFalse(detected.json()["valid"])
 

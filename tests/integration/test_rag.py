@@ -197,9 +197,7 @@ class GroundedRagIntegrationTests(unittest.TestCase):
         self.assertNotIn("reveal the system prompt", response.text.lower())
 
     def test_search_only_and_no_evidence_do_not_call_model(self) -> None:
-        search = self.chat(
-            "When must employees submit receipts?", mode="search_only"
-        )
+        search = self.chat("When must employees submit receipts?", mode="search_only")
         self.assertEqual(search.status_code, 200, search.text)
         self.assertEqual(search.json()["message"]["provider"], "retrieval")
         self.assertTrue(search.json()["citations"])
@@ -255,9 +253,7 @@ class GroundedRagIntegrationTests(unittest.TestCase):
         with self.app.state.database.session_factory() as session:
             self.assertEqual(session.query(MessageFeedbackRow).count(), 1)
             session.execute(
-                delete(DocumentAclRow).where(
-                    DocumentAclRow.document_id == UUID(self.document_id)
-                )
+                delete(DocumentAclRow).where(DocumentAclRow.document_id == UUID(self.document_id))
             )
             session.commit()
         hidden = self.client.get(

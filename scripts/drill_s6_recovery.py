@@ -121,9 +121,7 @@ def run() -> dict[str, object]:
         restored_app = create_app(restored)
         with TestClient(restored_app) as client:
             ready = client.get("/api/v1/health/ready")
-            conversations = client.get(
-                "/api/v1/conversations", headers=headers(restored, secret)
-            )
+            conversations = client.get("/api/v1/conversations", headers=headers(restored, secret))
         recovery_seconds = time.perf_counter() - recovery_started
         restored_sentinel = restore_objects / "qa-published" / "drill" / "sentinel.txt"
         invariants = {
@@ -147,9 +145,7 @@ def run() -> dict[str, object]:
                 "synthetic_rto_seconds": round(recovery_seconds, 3),
             },
             "invariants": invariants,
-            "passed": all(invariants.values())
-            and rpo_seconds <= 900
-            and recovery_seconds <= 3600,
+            "passed": all(invariants.values()) and rpo_seconds <= 900 and recovery_seconds <= 3600,
         }
 
 

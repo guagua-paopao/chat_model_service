@@ -18,9 +18,7 @@ def _b64encode(value: bytes) -> str:
 def _b64decode(value: str) -> bytes:
     if not value or "=" in value:
         raise ValueError("non-canonical base64url")
-    decoded = base64.b64decode(
-        value + "=" * (-len(value) % 4), altchars=b"-_", validate=True
-    )
+    decoded = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
     if _b64encode(decoded) != value:
         raise ValueError("non-canonical base64url")
     return decoded

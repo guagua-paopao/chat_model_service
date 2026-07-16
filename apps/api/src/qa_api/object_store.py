@@ -170,9 +170,7 @@ class S3ObjectStore:
             "region_name": self._region,
             "config": Config(signature_version="s3v4", s3={"addressing_style": "path"}),
         }
-        self._client = boto3.client(
-            "s3", endpoint_url=settings.object_store_endpoint_url, **common
-        )
+        self._client = boto3.client("s3", endpoint_url=settings.object_store_endpoint_url, **common)
         self._public_client = boto3.client(
             "s3", endpoint_url=settings.object_store_public_endpoint_url, **common
         )
@@ -188,9 +186,7 @@ class S3ObjectStore:
                     ) from exc
                 kwargs: dict[str, object] = {"Bucket": bucket}
                 if self._region != "us-east-1":
-                    kwargs["CreateBucketConfiguration"] = {
-                        "LocationConstraint": self._region
-                    }
+                    kwargs["CreateBucketConfiguration"] = {"LocationConstraint": self._region}
                 self._client.create_bucket(**kwargs)
 
     def presign_put(self, *, version_id: str, key: str, content_type: str) -> UploadGrant:
@@ -277,9 +273,7 @@ def _b64(value: bytes) -> str:
 def _unb64(value: str) -> bytes:
     if not value or "=" in value:
         raise ValueError("non-canonical base64url")
-    decoded = base64.b64decode(
-        value + "=" * (-len(value) % 4), altchars=b"-_", validate=True
-    )
+    decoded = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
     if _b64(decoded) != value:
         raise ValueError("non-canonical base64url")
     return decoded

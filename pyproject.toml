@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "enterprise-qa-system"
 version = "0.1.0"
-description = "Enterprise multi-tenant QA system - S6 quality and reliability"
+description = "Enterprise multi-tenant QA system - S7 release and operations"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "alembic==1.18.5",

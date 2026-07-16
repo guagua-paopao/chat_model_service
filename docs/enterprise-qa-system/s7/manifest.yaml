@@ -1,0 +1,65 @@
+phase: S7
+name: uat-progressive-rollout-and-operations-handover
+version: s7-v1.0-local-candidate
+date: 2026-07-16
+status: local_release_rehearsal_pass_production_no_go
+data_scope: synthetic_public_or_explicitly_approved_non_sensitive_only
+
+implemented:
+  release_candidate:
+    - immutable_artifact_manifest_and_checksum
+    - passing_evaluation_required
+    - server_derived_prompt_and_retrieval_versions
+    - declared_rollback_target_and_known_issues
+  approval:
+    - immutable_uc_01_through_uc_05_results
+    - product_business_data_security_sre_signoffs
+    - category_role_binding_and_creator_separation
+  rollout:
+    - dark_5_25_50_100_monotonic_stages
+    - server_owned_quality_reliability_cost_security_gates
+    - automatic_stop_and_security_rollback
+    - hash_chained_rollout_events
+    - local_orchestrator_fail_closed_outside_development
+  api_version: 1.7.0-s7
+  migration_version: 20260716_0008
+
+decisions:
+  log: 11-decision-log.md
+  adrs: [ADR-044, ADR-045, ADR-046, ADR-047, ADR-048, ADR-049, ADR-050]
+
+verification:
+  pytest_tests: 76
+  pytest_subtests: 35
+  coverage_percent: 89.18
+  python_known_vulnerabilities: 0
+  npm_production_known_vulnerabilities: 0
+  yaml_files: 9
+  canonical_openapi_refs: 285
+  canonical_openapi_paths: 47
+  sqlite_migration_roundtrip: pass
+  postgresql_migration_head: 20260716_0008
+  compose_long_running_services: 10
+  s3_s4_s5_s6_s7_smoke: pass
+  final_regression: pass
+  helm_cli_validation: skipped_not_installed
+
+production_blockers:
+  - all_s6_real_quality_identity_provider_capacity_observability_and_dr_blockers
+  - enterprise_oidc_scim_named_roles_cab_and_change_system
+  - registry_image_sbom_signature_provenance_and_policy_verification
+  - production_like_staging_helm_cluster_secret_tls_network_and_ingress
+  - external_rollout_controller_trusted_metrics_pager_logs_and_traces
+  - target_load_soak_real_provider_fault_and_billing_reconciliation
+  - postgresql_pitr_object_version_multi_region_and_forward_fix_drills
+  - real_uat_zero_p0_p1_named_owners_on_call_budget_vendor_and_training_signoff
+
+gate:
+  local_release_rehearsal: pass
+  synthetic_or_individually_approved_work: conditional_go
+  real_data: no_go
+  staging: no_go
+  production: no_go
+
+publication: local_archive_only_until_explicit_user_confirmation_for_s7
+branch: codex/s7-uat-rollout-operations

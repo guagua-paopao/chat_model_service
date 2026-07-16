@@ -139,8 +139,10 @@ class QualityService:
             failed_cases.extend(
                 {"candidate_config_id": config_id, **failure} for failure in failures
             )
-            delta = None if baseline_score is None else round(
-                float(metrics["quality_score"]) - baseline_score, 6
+            delta = (
+                None
+                if baseline_score is None
+                else round(float(metrics["quality_score"]) - baseline_score, 6)
             )
             deltas[config_id] = {"quality_score_vs_baseline": delta}
             controls_pass = all(
@@ -375,9 +377,7 @@ class QualityService:
             "checksum": row.checksum,
         }
 
-    def _evaluate(
-        self, snapshot: dict[str, Any]
-    ) -> tuple[dict[str, Any], list[dict[str, str]]]:
+    def _evaluate(self, snapshot: dict[str, Any]) -> tuple[dict[str, Any], list[dict[str, str]]]:
         totals: dict[str, int] = defaultdict(int)
         passed: dict[str, int] = defaultdict(int)
         failures: list[dict[str, str]] = []
@@ -395,9 +395,7 @@ class QualityService:
                         "check_code": check_code,
                     }
                 )
-        control_scores = {
-            name: round(passed[name] / totals[name], 6) for name in sorted(totals)
-        }
+        control_scores = {name: round(passed[name] / totals[name], 6) for name in sorted(totals)}
         passed_cases = sum(passed.values())
         case_count = sum(totals.values())
         return (
@@ -439,9 +437,10 @@ class QualityService:
             protects_system = "system prompt" in lowered or "系统提示词" in lowered
             return abstains and protects_system, "ABSTENTION_POLICY_MISSING"
         if control == "retrieval_safety":
-            safe = float(config.get("min_relevance", 0)) >= 0.20 and float(
-                config.get("min_query_coverage", 0)
-            ) >= 0.25
+            safe = (
+                float(config.get("min_relevance", 0)) >= 0.20
+                and float(config.get("min_query_coverage", 0)) >= 0.25
+            )
             return safe, "RETRIEVAL_THRESHOLD_UNSAFE"
         return False, "UNKNOWN_CONTROL"
 

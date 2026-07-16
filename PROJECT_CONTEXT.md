@@ -1,9 +1,9 @@
 # Project Context
 
-> 状态：S6 本地工程 Gate 通过，真实数据/staging/production 仍为 NO-GO  
-> 基线版本：s6-v1.0-local-candidate  
+> 状态：S7 本地发布演练 Gate 通过，真实数据/staging/production 仍为 NO-GO  
+> 基线版本：s7-v1.0-local-candidate  
 > 基线日期：2026-07-16  
-> 下一阶段：关闭 S6 生产阻断项后进入 S7 UAT、灰度发布与运营移交
+> 下一阶段：关闭 S6/S7 生产阻断项并完成真实 UAT、环境接入与具名移交
 
 ## 1. 当前目标
 
@@ -47,6 +47,9 @@
 | S6 质量与可靠性 | 不可变评测运行、基线差异门禁、低基数 OTel、Prometheus/Grafana、SLO 告警、有界负载、故障和恢复工具已实现 | `s6/README.md` |
 | S6 质量与验证 | 72 tests + 35 subtests，88.84% coverage；Python/npm 已知漏洞 0；全栈 smoke、5 个故障场景、4 个恢复不变量通过 | `s6/08-test-and-verification-report.md` |
 | S6 Gate | 本地工程 PASS；合成/批准范围 CONDITIONAL GO；真实数据、staging、production NO-GO | `s6/09-s6-gate-review.md` |
+| S7 发布与移交 | 不可变候选、UAT、五类签署、单调灰度、自动停止/回滚、事件哈希链和运营移交包已实现 | `s7/README.md` |
+| S7 质量与验证 | 76 tests + 35 subtests，89.18% coverage；Python/npm 已知漏洞 0；0008 PostgreSQL 迁移及 S3～S7 全栈 smoke 通过 | `s7/09-test-and-verification-report.md` |
+| S7 Gate | 本地发布演练 PASS；真实数据、staging、production NO-GO | `s7/10-s7-gate-review.md` |
 
 ## 3. 已接受技术基线
 
@@ -120,7 +123,16 @@
 4. SRE/DBA 接入 Alertmanager/Pager、Trace/日志后端，完成 PostgreSQL PITR、对象版本与多区域隔离恢复演练。
 5. 只有 S6 Gate 阻断项关闭并完成具名签字后才能进入 S7；任何真实数据、外部 Provider、企业系统写入或公开发布均须单独授权。
 
-## S6 当前基线（覆盖文首旧阶段状态）
+## S7 当前基线（覆盖文首旧阶段状态）
+
+- 当前版本：`s7-v1.0-local-candidate`，日期 2026-07-16；证据包：`docs/enterprise-qa-system/s7/`。
+- 已完成：0008 发布数据模型、不可变候选清单、UC-01～05、五类角色签署、dark/5/25/50/100 灰度、服务端质量/可靠性/成本/安全门禁、自动停止/回滚、事件哈希链、Web/BFF 和 S7 smoke。
+- 验证证据：76 tests + 35 subtests、89.18% coverage；生产源码 mypy strict、Ruff、ESLint、TypeScript、Next build 通过；Python/npm 已知漏洞 0；0008 PostgreSQL 迁移和 S3～S7 全栈 smoke 通过。Helm CLI 未安装，集群验证仍阻断。
+- ADR 基线：ADR-001 至 ADR-050；S7 新增 ADR-044 至 ADR-050。
+- 关键限制：候选 digest/UAT/签署/观察值均为合成；本地编排器不操作集群；S6 真实质量、IAM、性能、观测和 DR 阻断项仍有效。
+- Gate：只允许合成、公开或逐项批准非敏感范围维护；真实数据、staging、production 仍 NO-GO；S7 上传 GitHub 需用户另行明确确认。
+
+## S6 当前基线（历史）
 
 - 当前版本：`s6-v1.0-local-candidate`，日期 2026-07-16；证据包：`docs/enterprise-qa-system/s6/`。
 - 已完成：0007 不可变评测运行、24 条合成固定集、基线差异门禁、usage/operations API、W3C Trace Context、低基数 OTel、Prometheus/Grafana、4 条带 Owner/Runbook 告警、有界负载、5 个 Fake Provider 故障场景和隔离恢复演练。

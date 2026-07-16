@@ -162,8 +162,9 @@ class QuotaManager:
                 )
                 active_reserved_tokens = int(
                     session.scalar(
-                        select(func.coalesce(func.sum(QuotaLeaseRow.input_tokens_reserved), 0))
-                        .where(
+                        select(
+                            func.coalesce(func.sum(QuotaLeaseRow.input_tokens_reserved), 0)
+                        ).where(
                             QuotaLeaseRow.tenant_id == tenant_id,
                             QuotaLeaseRow.expires_at > now,
                         )
@@ -179,9 +180,8 @@ class QuotaManager:
                     )
                     or 0
                 )
-                if (
-                    consumed_tokens + active_reserved_tokens + estimated
-                    > int(policy["daily_token_limit"])
+                if consumed_tokens + active_reserved_tokens + estimated > int(
+                    policy["daily_token_limit"]
                 ):
                     raise ApiError(
                         429,
@@ -445,9 +445,7 @@ class ChatRepository:
     def list_messages(
         self, *, tenant_id: UUID, user_id: UUID, conversation_id: UUID
     ) -> list[MessageRecord]:
-        self._conversation(
-            tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id
-        )
+        self._conversation(tenant_id=tenant_id, user_id=user_id, conversation_id=conversation_id)
         rows = self._session.scalars(
             select(MessageRow)
             .where(
@@ -708,9 +706,7 @@ class ChatRepository:
         request_id: str,
         trace_id: str,
     ) -> str:
-        row = self._scoped_assistant(
-            tenant_id=tenant_id, user_id=user_id, message_id=message_id
-        )
+        row = self._scoped_assistant(tenant_id=tenant_id, user_id=user_id, message_id=message_id)
         if row.status == "cancelled":
             return "cancelled"
         if row.status not in {"pending", "streaming"}:
@@ -729,9 +725,7 @@ class ChatRepository:
         )
         return "cancelled"
 
-    def get_message(
-        self, *, tenant_id: UUID, user_id: UUID, message_id: UUID
-    ) -> MessageRecord:
+    def get_message(self, *, tenant_id: UUID, user_id: UUID, message_id: UUID) -> MessageRecord:
         return _message_record(
             self._scoped_assistant(tenant_id=tenant_id, user_id=user_id, message_id=message_id)
         )
@@ -741,19 +735,19 @@ class ChatRepository:
         result = cast(
             CursorResult[Any],
             self._session.execute(
-            update(MessageRow)
-            .where(
-                MessageRow.status.in_(["pending", "streaming"]),
-                MessageRow.updated_at < cutoff,
-            )
-            .values(
-                status="failed",
-                finish_reason="error",
-                error_code="STREAM_ORPHAN_RECOVERED",
-                error_detail_safe="The interrupted stream was recovered during startup.",
-                updated_at=utc_now(),
-                completed_at=utc_now(),
-            )
+                update(MessageRow)
+                .where(
+                    MessageRow.status.in_(["pending", "streaming"]),
+                    MessageRow.updated_at < cutoff,
+                )
+                .values(
+                    status="failed",
+                    finish_reason="error",
+                    error_code="STREAM_ORPHAN_RECOVERED",
+                    error_detail_safe="The interrupted stream was recovered during startup.",
+                    updated_at=utc_now(),
+                    completed_at=utc_now(),
+                )
             ),
         )
         self._session.commit()
@@ -786,9 +780,7 @@ class ChatRepository:
             )
         return row
 
-    def _scoped_assistant(
-        self, *, tenant_id: UUID, user_id: UUID, message_id: UUID
-    ) -> MessageRow:
+    def _scoped_assistant(self, *, tenant_id: UUID, user_id: UUID, message_id: UUID) -> MessageRow:
         row = self._session.scalar(
             select(MessageRow)
             .join(
@@ -1183,9 +1175,7 @@ class ChatService:
                         )
                     if prepared.response_mode != "general":
                         for delta in self._response_chunks(content):
-                            yield self._event(
-                                prepared, sequence, "message.delta", {"delta": delta}
-                            )
+                            yield self._event(prepared, sequence, "message.delta", {"delta": delta})
                             sequence += 1
                         for citation in citations:
                             yield self._event(
@@ -1287,9 +1277,7 @@ class ChatService:
                 source_ids=source_ids,
             )
             lines = ["已找到以下已授权资料："]
-            lines.extend(
-                f"- {item.quote} [{item.source_id}]" for item in citations
-            )
+            lines.extend(f"- {item.quote} [{item.source_id}]" for item in citations)
             content = "\n".join(lines)
             finish_reason = "stop"
         with self._session_factory() as session:
@@ -1303,9 +1291,7 @@ class ChatService:
             yield self._event(prepared, sequence, "message.delta", {"delta": delta})
             sequence += 1
         for citation in citations:
-            yield self._event(
-                prepared, sequence, "citation", self._citation_fields(citation)
-            )
+            yield self._event(prepared, sequence, "citation", self._citation_fields(citation))
             sequence += 1
         yield self._event(
             prepared,

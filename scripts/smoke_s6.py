@@ -60,9 +60,7 @@ def main() -> int:
         if snapshot["production_slo_evidence"] is not False:
             raise RuntimeError("process snapshot must not claim production SLO evidence")
         expect(
-            requests.get(
-                f"{base}/usage?group_by=model", headers=headers(auditor), timeout=10
-            ),
+            requests.get(f"{base}/usage?group_by=model", headers=headers(auditor), timeout=10),
             200,
             "usage report",
         )

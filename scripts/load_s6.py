@@ -58,9 +58,7 @@ def request_sse(base: str, headers: dict[str, str]) -> Sample:
             timeout=20,
         )
         if created.status_code != 201:
-            return Sample(
-                created.status_code, (time.perf_counter() - started) * 1000, None, None
-            )
+            return Sample(created.status_code, (time.perf_counter() - started) * 1000, None, None)
         with requests.post(
             f"{base}/chat/completions",
             headers=headers,

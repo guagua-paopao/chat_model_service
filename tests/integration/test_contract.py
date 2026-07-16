@@ -73,12 +73,8 @@ class ContractTests(unittest.TestCase):
             Path("docs/enterprise-qa-system/openapi.yaml").read_text(encoding="utf-8")
         )
         canonical_schema = contract["components"]["schemas"]["QuotaPolicyPatch"]
-        self.assertEqual(
-            set(canonical_schema["required"]), set(runtime_schema["required"])
-        )
-        self.assertEqual(
-            set(canonical_schema["properties"]), set(runtime_schema["properties"])
-        )
+        self.assertEqual(set(canonical_schema["required"]), set(runtime_schema["required"]))
+        self.assertEqual(set(canonical_schema["properties"]), set(runtime_schema["properties"]))
         self.assertFalse(canonical_schema["additionalProperties"])
 
     def test_s6_quality_reliability_paths_and_fields_match_contract(self) -> None:
@@ -97,9 +93,30 @@ class ContractTests(unittest.TestCase):
             self.assertIn(path.removeprefix("/api/v1"), contract["paths"])
         runtime_schema = runtime["components"]["schemas"]["EvaluationRunCreate"]
         canonical_schema = contract["components"]["schemas"]["EvaluationRunCreate"]
-        self.assertEqual(
-            set(runtime_schema["properties"]), set(canonical_schema["properties"])
+        self.assertEqual(set(runtime_schema["properties"]), set(canonical_schema["properties"]))
+        self.assertFalse(canonical_schema["additionalProperties"])
+
+    def test_s7_release_paths_and_candidate_fields_match_contract(self) -> None:
+        runtime = create_app(settings()).openapi()
+        expected = {
+            "/api/v1/admin/releases",
+            "/api/v1/admin/releases/{release_id}",
+            "/api/v1/admin/releases/{release_id}/uat-results",
+            "/api/v1/admin/releases/{release_id}/signoffs",
+            "/api/v1/admin/releases/{release_id}/rollout/start",
+            "/api/v1/admin/releases/{release_id}/rollout/advance",
+            "/api/v1/admin/releases/{release_id}/rollout/stop",
+            "/api/v1/admin/releases/{release_id}/rollout/rollback",
+        }
+        self.assertTrue(expected.issubset(runtime["paths"]))
+        contract = yaml.safe_load(
+            Path("docs/enterprise-qa-system/openapi.yaml").read_text(encoding="utf-8")
         )
+        for path in expected:
+            self.assertIn(path.removeprefix("/api/v1"), contract["paths"])
+        runtime_schema = runtime["components"]["schemas"]["ReleaseCandidateCreate"]
+        canonical_schema = contract["components"]["schemas"]["ReleaseCandidateCreate"]
+        self.assertEqual(set(runtime_schema["properties"]), set(canonical_schema["properties"]))
         self.assertFalse(canonical_schema["additionalProperties"])
 
 

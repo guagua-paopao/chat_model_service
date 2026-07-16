@@ -73,6 +73,14 @@ def main() -> int:
         "/evaluations/runs/{run_id}",
         "/usage",
         "/admin/operations/snapshot",
+        "/admin/releases",
+        "/admin/releases/{release_id}",
+        "/admin/releases/{release_id}/uat-results",
+        "/admin/releases/{release_id}/signoffs",
+        "/admin/releases/{release_id}/rollout/start",
+        "/admin/releases/{release_id}/rollout/advance",
+        "/admin/releases/{release_id}/rollout/stop",
+        "/admin/releases/{release_id}/rollout/rollback",
     }
     missing = required_paths - set(openapi.get("paths", {}))
     if missing:

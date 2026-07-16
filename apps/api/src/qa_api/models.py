@@ -368,9 +368,7 @@ class DocumentVersionResponse(StrictModel):
     actual_size_bytes: int | None
     declared_sha256: str
     actual_sha256: str | None
-    status: Literal[
-        "awaiting_upload", "queued", "processing", "published", "failed", "archived"
-    ]
+    status: Literal["awaiting_upload", "queued", "processing", "published", "failed", "archived"]
     parser_version: str | None
     chunker_version: str | None
     embedding_model: str | None
@@ -707,9 +705,7 @@ class SecurityIncidentListResponse(StrictModel):
 
 
 class EvaluationRunCreate(StrictModel):
-    dataset_version_id: str = Field(
-        default="s6-mini-golden-v1", min_length=1, max_length=128
-    )
+    dataset_version_id: str = Field(default="s6-mini-golden-v1", min_length=1, max_length=128)
     candidate_config_ids: list[UUID] = Field(min_length=1, max_length=5)
     baseline_run_id: UUID | None = None
     tags: list[str] = Field(default_factory=list, max_length=10)
@@ -785,3 +781,161 @@ class OperationsSnapshotResponse(StrictModel):
     production_slo_evidence: Literal[False]
     request_window: dict[str, Any]
     tenant_signals: dict[str, Any]
+
+
+class ReleaseCandidateCreate(StrictModel):
+    release_version: str = Field(
+        min_length=3, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]+$"
+    )
+    git_sha: str = Field(pattern=r"^[0-9a-f]{40}$")
+    image_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    sbom_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    db_migration: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
+    model_route_versions: list[str] = Field(min_length=1, max_length=10)
+    eval_run_id: UUID
+    rollback_target: str = Field(
+        min_length=3, max_length=128, pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]+$"
+    )
+    known_issues: list[str] = Field(default_factory=list, max_length=20)
+
+    @field_validator("model_route_versions")
+    @classmethod
+    def route_versions_are_unique_and_safe(cls, value: list[str]) -> list[str]:
+        cleaned = [item.strip() for item in value]
+        if len(set(cleaned)) != len(cleaned) or any(
+            not item or len(item) > 128 for item in cleaned
+        ):
+            raise ValueError(
+                "model_route_versions must be unique non-empty values up to 128 characters"
+            )
+        return cleaned
+
+    @field_validator("known_issues")
+    @classmethod
+    def known_issues_are_safe(cls, value: list[str]) -> list[str]:
+        cleaned = [item.strip() for item in value]
+        if any(not item or len(item) > 300 for item in cleaned):
+            raise ValueError("known_issues must contain safe summaries up to 300 characters")
+        return cleaned
+
+
+class ReleaseUatResultCreate(StrictModel):
+    case_id: Literal["UC-01", "UC-02", "UC-03", "UC-04", "UC-05"]
+    result: Literal["passed", "failed"]
+    evidence_ref: str = Field(
+        min_length=3, max_length=256, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]+$"
+    )
+    notes_safe: str | None = Field(default=None, max_length=500)
+
+
+class ReleaseSignoffCreate(StrictModel):
+    category: Literal["product", "business", "data", "security", "sre"]
+    decision: Literal["approved", "rejected"]
+    approval_id: str = Field(min_length=3, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+    evidence_ref: str = Field(
+        min_length=3, max_length=256, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]+$"
+    )
+    reason: str = Field(min_length=10, max_length=500)
+
+
+class RolloutObservation(StrictModel):
+    observed_seconds: int = Field(ge=60, le=86_400)
+    requests: int = Field(ge=1, le=100_000_000)
+    server_error_rate: float = Field(ge=0, le=1)
+    ttft_p95_ms: float = Field(ge=0, le=600_000)
+    response_p95_ms: float = Field(ge=0, le=600_000)
+    negative_feedback_rate: float = Field(ge=0, le=1)
+    citation_precision: float = Field(ge=0, le=1)
+    cost_delta_ratio: float = Field(ge=-1, le=10)
+    quality_delta: float = Field(ge=-1, le=1)
+    security_incidents: int = Field(ge=0, le=1_000_000)
+    unauthorized_leakage_count: int = Field(ge=0, le=1_000_000)
+    evidence_ref: str = Field(
+        min_length=3, max_length=256, pattern=r"^[A-Za-z0-9][A-Za-z0-9._:/-]+$"
+    )
+
+
+class ReleaseRolloutAdvance(StrictModel):
+    target_stage: Literal["percent_5", "percent_25", "percent_50", "percent_100"]
+    observation: RolloutObservation
+    reason: str = Field(min_length=10, max_length=500)
+
+
+class ReleaseActionRequest(StrictModel):
+    reason: str = Field(min_length=10, max_length=500)
+    approval_id: str = Field(min_length=3, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+
+
+class ReleaseUatResultResponse(StrictModel):
+    case_id: str
+    result: Literal["passed", "failed"]
+    evidence_ref: str
+    notes_safe: str | None
+    executed_by: UUID
+    executed_at: datetime
+
+
+class ReleaseSignoffResponse(StrictModel):
+    category: str
+    decision: Literal["approved", "rejected"]
+    approval_id: str
+    evidence_ref: str
+    reason: str
+    signed_by: UUID
+    signed_at: datetime
+
+
+class ReleaseRolloutEventResponse(StrictModel):
+    sequence_no: int
+    action: str
+    from_stage: str
+    to_stage: str
+    decision: str
+    observation: dict[str, Any]
+    reason: str
+    actor_user_id: UUID
+    event_hash: str
+    occurred_at: datetime
+
+
+class ReleaseCandidateResponse(StrictModel):
+    id: UUID
+    release_version: str
+    git_sha: str
+    image_digest: str
+    sbom_digest: str
+    db_migration: str
+    prompt_versions: list[str]
+    retrieval_versions: list[str]
+    model_route_versions: list[str]
+    dataset_version: str
+    eval_run_id: UUID
+    rollback_target: str
+    known_issues: list[str]
+    artifact_checksum: str
+    status: Literal[
+        "draft",
+        "qualified",
+        "approved",
+        "rolling_out",
+        "stopped",
+        "rejected",
+        "completed",
+        "rolled_back",
+    ]
+    current_stage: Literal[
+        "none", "dark", "percent_5", "percent_25", "percent_50", "percent_100", "rolled_back"
+    ]
+    uat_results: list[ReleaseUatResultResponse]
+    signoffs: list[ReleaseSignoffResponse]
+    rollout_events: list[ReleaseRolloutEventResponse]
+    rollout_integrity_valid: bool
+    created_by: UUID
+    created_at: datetime
+    qualified_at: datetime | None
+    approved_at: datetime | None
+    completed_at: datetime | None
+
+
+class ReleaseCandidateListResponse(StrictModel):
+    items: list[ReleaseCandidateResponse]

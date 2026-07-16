@@ -472,9 +472,10 @@ class IngestionService:
             )
             if knowledge_base is None:
                 raise self._not_found("Knowledge base")
-            if CLASSIFICATION_RANK[payload.classification] < CLASSIFICATION_RANK[
-                knowledge_base.classification
-            ]:
+            if (
+                CLASSIFICATION_RANK[payload.classification]
+                < CLASSIFICATION_RANK[knowledge_base.classification]
+            ):
                 raise ApiError(
                     422,
                     "CLASSIFICATION_DOWNGRADE_FORBIDDEN",
@@ -713,9 +714,9 @@ class IngestionService:
             session.refresh(job)
             return job
 
-    def get_document(self, *, tenant_id: UUID, document_id: UUID) -> tuple[
-        DocumentRow, list[DocumentAclRow], list[DocumentVersionRow], IngestionJobRow | None
-    ]:
+    def get_document(
+        self, *, tenant_id: UUID, document_id: UUID
+    ) -> tuple[DocumentRow, list[DocumentAclRow], list[DocumentVersionRow], IngestionJobRow | None]:
         with self._sessions() as session:
             document = session.scalar(
                 select(DocumentRow).where(
@@ -1010,9 +1011,7 @@ class IngestionService:
             )
             statement = (
                 select(IngestionJobRow)
-                .where(
-                    IngestionJobRow.status == "queued", IngestionJobRow.available_at <= now
-                )
+                .where(IngestionJobRow.status == "queued", IngestionJobRow.available_at <= now)
                 .order_by(IngestionJobRow.available_at, IngestionJobRow.created_at)
                 .limit(1)
             )
@@ -1091,9 +1090,7 @@ class IngestionService:
                 extra={"event_fields": {"version_id": str(version.id)}},
             )
 
-    def _embed_with_reuse(
-        self, tenant_id: UUID, chunks: list[ChunkDraft]
-    ) -> list[list[float]]:
+    def _embed_with_reuse(self, tenant_id: UUID, chunks: list[ChunkDraft]) -> list[list[float]]:
         hashes = [chunk.content_hash for chunk in chunks]
         with self._sessions() as session:
             existing = list(
@@ -1303,9 +1300,7 @@ class IngestionService:
             job.updated_at = utc_now()
             session.commit()
 
-    def _load_work(
-        self, job_id: UUID
-    ) -> tuple[IngestionJobRow, DocumentVersionRow, DocumentRow]:
+    def _load_work(self, job_id: UUID) -> tuple[IngestionJobRow, DocumentVersionRow, DocumentRow]:
         with self._sessions() as session:
             job = session.get(IngestionJobRow, job_id)
             if job is None:

@@ -63,7 +63,7 @@ try {
     if ($OnlineAudit) {
         & $python -m pip_audit -r requirements.lock
     }
-    Write-Host "S6 checks passed."
+    Write-Host "S7 checks passed."
 }
 finally {
     Pop-Location

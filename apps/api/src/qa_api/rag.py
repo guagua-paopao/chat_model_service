@@ -160,11 +160,8 @@ class RagService:
             knowledge_bases = self._knowledge_bases(
                 session, principal=principal, knowledge_base_ids=knowledge_base_ids
             )
-            if (
-                self.embedding.external or self.reranker.external
-            ) and any(
-                item.classification in {"confidential", "restricted"}
-                for item in knowledge_bases
+            if (self.embedding.external or self.reranker.external) and any(
+                item.classification in {"confidential", "restricted"} for item in knowledge_bases
             ):
                 raise ApiError(
                     403,
@@ -223,9 +220,7 @@ class RagService:
                 "selected_sources": len(selected),
                 "context_tokens": sum(item.packed_token_count for item in selected),
                 "query_coverage": round(query_coverage, 8),
-                "injection_redacted_chunks": sum(
-                    item.injection_redacted for item in candidates
-                ),
+                "injection_redacted_chunks": sum(item.injection_redacted for item in candidates),
             }
             run = RetrievalRunRow(
                 id=uuid7(),
@@ -396,9 +391,7 @@ class RagService:
             session.commit()
             return [self._citation_view(row) for row in rows]
 
-    def list_citations(
-        self, *, principal: Principal, message_id: UUID
-    ) -> list[CitationView]:
+    def list_citations(self, *, principal: Principal, message_id: UUID) -> list[CitationView]:
         with self._sessions() as session:
             rows = list(
                 session.scalars(
@@ -651,9 +644,9 @@ class RagService:
                 raw += float(config["vector_weight"]) / (rrf_k + candidate.vector_rank)
             if candidate.lexical_rank is not None:
                 raw += float(config["lexical_weight"]) / (rrf_k + candidate.lexical_rank)
-            maximum = (
-                float(config["vector_weight"]) + float(config["lexical_weight"])
-            ) / (rrf_k + 1)
+            maximum = (float(config["vector_weight"]) + float(config["lexical_weight"])) / (
+                rrf_k + 1
+            )
             candidate.fusion_score = round(raw / maximum, 8)
         fused = sorted(
             candidates.values(), key=lambda item: (-item.fusion_score, str(item.chunk.id))
@@ -694,9 +687,7 @@ class RagService:
             candidate.final_rank = rank
         return ranked
 
-    def _secure_statement(
-        self, *, principal: Principal, knowledge_base_ids: list[UUID]
-    ) -> Any:
+    def _secure_statement(self, *, principal: Principal, knowledge_base_ids: list[UUID]) -> Any:
         role_clause: Any = false()
         if principal.roles:
             role_clause = and_(
@@ -765,9 +756,7 @@ class RagService:
         config: dict[str, Any],
     ) -> tuple[list[tuple[Any, Any, Any, float]], list[tuple[Any, Any, Any, float]]]:
         rows = session.execute(
-            self._secure_statement(
-                principal=principal, knowledge_base_ids=knowledge_base_ids
-            )
+            self._secure_statement(principal=principal, knowledge_base_ids=knowledge_base_ids)
         ).all()
         vector_rows: list[tuple[Any, Any, Any, float]] = []
         lexical_rows: list[tuple[Any, Any, Any, float]] = []
@@ -803,9 +792,7 @@ class RagService:
         query_vector: list[float],
         config: dict[str, Any],
     ) -> tuple[list[tuple[Any, Any, Any, float]], list[tuple[Any, Any, Any, float]]]:
-        secure = self._secure_statement(
-            principal=principal, knowledge_base_ids=knowledge_base_ids
-        )
+        secure = self._secure_statement(principal=principal, knowledge_base_ids=knowledge_base_ids)
         distance = self._vector_distance(query_vector).label("vector_distance")
         vector_statement = (
             secure.add_columns(distance)
@@ -815,9 +802,7 @@ class RagService:
         )
         vector_rows = [
             (chunk, document, version, max(0.0, 1.0 - float(raw_distance)))
-            for chunk, document, version, raw_distance in session.execute(
-                vector_statement
-            ).all()
+            for chunk, document, version, raw_distance in session.execute(vector_statement).all()
         ]
 
         lexical_query = " ".join(dict.fromkeys(tokenize(query)))[:2_000]

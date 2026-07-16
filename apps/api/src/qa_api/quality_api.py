@@ -28,9 +28,7 @@ def build_quality_router(
 ) -> APIRouter:
     router = APIRouter(prefix="/api/v1", tags=["Quality and reliability"])
 
-    @router.post(
-        "/evaluations/runs", response_model=EvaluationRunResponse, status_code=201
-    )
+    @router.post("/evaluations/runs", response_model=EvaluationRunResponse, status_code=201)
     def create_run(
         payload: EvaluationRunCreate,
         request: Request,
@@ -112,9 +110,7 @@ def build_quality_router(
             ),
         )
 
-    @router.get(
-        "/admin/operations/snapshot", response_model=OperationsSnapshotResponse
-    )
+    @router.get("/admin/operations/snapshot", response_model=OperationsSnapshotResponse)
     def operations_snapshot(
         session: Annotated[Session, Depends(get_session)],
         principal: Annotated[Principal, Depends(get_principal)],

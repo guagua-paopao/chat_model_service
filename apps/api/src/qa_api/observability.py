@@ -200,8 +200,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 content_length = request.headers.get("content-length")
                 request_limit = (
                     self._settings.ingestion_max_upload_bytes
-                    if request.method == "PUT"
-                    and request.url.path.startswith("/api/v1/uploads/")
+                    if request.method == "PUT" and request.url.path.startswith("/api/v1/uploads/")
                     else self._settings.max_request_bytes
                 )
                 try:
@@ -233,9 +232,7 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
                 span.set_attribute("http.response.status_code", response.status_code)
                 if response.status_code >= 500:
                     span.set_status(Status(StatusCode.ERROR))
-                self._telemetry.record_http(
-                    request.method, route, response.status_code, duration
-                )
+                self._telemetry.record_http(request.method, route, response.status_code, duration)
                 response.headers["X-Request-ID"] = request_id
                 response.headers["X-Trace-ID"] = trace_id
                 response.headers["X-Content-Type-Options"] = "nosniff"

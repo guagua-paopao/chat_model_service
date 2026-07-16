@@ -88,9 +88,7 @@ def build_governance_router(
         )
         response.headers["ETag"] = etag(row.version)
         item = next(
-            value
-            for value in service.list_users(session, principal)
-            if value["row"].id == row.id
+            value for value in service.list_users(session, principal) if value["row"].id == row.id
         )
         return _user_response(item)
 
@@ -305,9 +303,7 @@ def build_governance_router(
         policy.require(principal, "qa:usage:read")
         start, end = _bounded_window(from_time, to_time)
         return UsageSummaryResponse(
-            **service.usage_summary(
-                session, principal=principal, from_time=start, to_time=end
-            )
+            **service.usage_summary(session, principal=principal, from_time=start, to_time=end)
         )
 
     @router.get("/quality-summary", response_model=QualitySummaryResponse)
@@ -320,9 +316,7 @@ def build_governance_router(
         policy.require(principal, "qa:usage:read")
         start, end = _bounded_window(from_time, to_time)
         return QualitySummaryResponse(
-            **service.quality_summary(
-                session, principal=principal, from_time=start, to_time=end
-            )
+            **service.quality_summary(session, principal=principal, from_time=start, to_time=end)
         )
 
     @router.get("/security-incidents", response_model=SecurityIncidentListResponse)
@@ -335,9 +329,7 @@ def build_governance_router(
             items=[_incident_response(row) for row in service.list_incidents(session, principal)]
         )
 
-    @router.post(
-        "/security-incidents", response_model=SecurityIncidentResponse, status_code=201
-    )
+    @router.post("/security-incidents", response_model=SecurityIncidentResponse, status_code=201)
     def create_incident(
         payload: SecurityIncidentCreate,
         request: Request,
@@ -360,9 +352,7 @@ def build_governance_router(
             )
         )
 
-    @router.patch(
-        "/security-incidents/{incident_id}", response_model=SecurityIncidentResponse
-    )
+    @router.patch("/security-incidents/{incident_id}", response_model=SecurityIncidentResponse)
     def patch_incident(
         incident_id: UUID,
         payload: SecurityIncidentPatch,

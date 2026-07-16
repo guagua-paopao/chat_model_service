@@ -1,4 +1,4 @@
-# S6 runtime lock. Regenerate and re-audit when changing pyproject.toml.
+# S7 runtime lock. Regenerate and re-audit when changing pyproject.toml.
 alembic==1.18.5
 annotated-doc==0.0.4
 annotated-types==0.7.0
