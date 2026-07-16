@@ -13,6 +13,8 @@ from qa_api.ids import uuid7
 from qa_api.persistence import (
     AuditLogRow,
     ConversationRow,
+    GroupMemberRow,
+    GroupRow,
     RoleRow,
     TenantRow,
     UserRoleRow,
@@ -69,6 +71,29 @@ class IdentityRepository:
         for role in roles:
             role_codes.append(role.code)
             permissions.update(role.permissions)
+        groups = tuple(
+            sorted(
+                self._session.scalars(
+                    select(GroupRow.code)
+                    .join(
+                        GroupMemberRow,
+                        and_(
+                            GroupMemberRow.tenant_id == GroupRow.tenant_id,
+                            GroupMemberRow.group_id == GroupRow.id,
+                        ),
+                    )
+                    .where(
+                        GroupMemberRow.tenant_id == tenant_id,
+                        GroupMemberRow.user_id == user.id,
+                        GroupRow.status == "active",
+                        or_(
+                            GroupMemberRow.valid_until.is_(None),
+                            GroupMemberRow.valid_until > utc_now(),
+                        ),
+                    )
+                )
+            )
+        )
         return Principal(
             user_id=user.id,
             tenant_id=tenant.id,
@@ -77,6 +102,7 @@ class IdentityRepository:
             display_name=user.display_name,
             locale=user.locale,
             roles=tuple(sorted(role_codes)),
+            groups=groups,
             permissions=tuple(sorted(permissions)),
         )
 

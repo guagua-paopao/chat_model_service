@@ -61,6 +61,9 @@ class AuthorizationGrant:
 
 PERSONAS = {
     "demo": ("demo-employee", "00000000-0000-7000-8000-000000000001"),
+    "governance": ("governance-admin", "00000000-0000-7000-8000-000000000001"),
+    "approver": ("config-approver", "00000000-0000-7000-8000-000000000001"),
+    "auditor": ("demo-auditor", "00000000-0000-7000-8000-000000000001"),
     "other": ("other-employee", "00000000-0000-7000-8000-000000000002"),
     "disabled": ("disabled-employee", "00000000-0000-7000-8000-000000000001"),
 }

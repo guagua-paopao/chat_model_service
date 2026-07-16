@@ -69,3 +69,4 @@ data:
   QA_RERANKER_PROVIDER_BASE_URL: {{ .Values.config.rerankerProviderBaseUrl | quote }}
   QA_RERANKER_PROVIDER_MODEL: {{ .Values.config.rerankerProviderModel | quote }}
   QA_RERANKER_TIMEOUT_SECONDS: {{ .Values.config.rerankerTimeoutSeconds | quote }}
+  QA_LOCAL_GOVERNANCE_EVALUATOR_ENABLED: "false"

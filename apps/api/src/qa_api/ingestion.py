@@ -875,6 +875,13 @@ class IngestionService:
                     DocumentAclRow.subject_id.in_(principal.roles),
                 )
             )
+        if principal.groups:
+            subjects.append(
+                and_(
+                    DocumentAclRow.subject_type == "group",
+                    DocumentAclRow.subject_id.in_(principal.groups),
+                )
+            )
         acl_exists = exists(
             select(DocumentAclRow.id).where(
                 DocumentAclRow.tenant_id == principal.tenant_id,

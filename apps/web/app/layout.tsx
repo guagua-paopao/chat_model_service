@@ -3,7 +3,7 @@ import "./styles.css";
 
 export const metadata: Metadata = {
   title: "企业知识问答",
-  description: "Enterprise QA system S1 shell",
+  description: "Enterprise QA system S5 governance baseline",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

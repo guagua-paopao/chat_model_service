@@ -10,6 +10,9 @@ from dotenv import load_dotenv
 
 TENANTS = {
     "demo": ("00000000-0000-7000-8000-000000000001", "demo-employee"),
+    "governance": ("00000000-0000-7000-8000-000000000001", "governance-admin"),
+    "approver": ("00000000-0000-7000-8000-000000000001", "config-approver"),
+    "auditor": ("00000000-0000-7000-8000-000000000001", "demo-auditor"),
     "other": ("00000000-0000-7000-8000-000000000002", "other-employee"),
     "disabled": ("00000000-0000-7000-8000-000000000001", "disabled-employee"),
 }

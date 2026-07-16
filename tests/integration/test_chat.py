@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import unittest
 from dataclasses import replace
+from datetime import timedelta
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -9,8 +10,11 @@ from qa_api.ids import uuid7
 from qa_api.main import create_app
 from qa_api.persistence import (
     DEMO_TENANT_ID,
+    DEMO_USER_ID,
     MessageRow,
     ModelInvocationRow,
+    QuotaLeaseRow,
+    QuotaPolicyRow,
     UsageLedgerRow,
     utc_now,
 )
@@ -272,6 +276,52 @@ class ChatQuotaIntegrationTests(unittest.TestCase):
             limited = client.post("/api/v1/chat/completions", headers=headers, json=payload)
             self.assertEqual(limited.status_code, 429)
             self.assertEqual(limited.json()["code"], "CHAT_RATE_LIMITED")
+
+    def test_active_input_reservations_prevent_daily_token_oversubscription(self) -> None:
+        config = replace(
+            settings(),
+            fake_model_enabled=True,
+            fake_model_chunk_delay_ms=0,
+        ).validated()
+        app = create_app(config)
+        with TestClient(app) as client:
+            headers = {"Authorization": f"Bearer {token_for(config)}"}
+            conversation = client.post(
+                "/api/v1/conversations",
+                headers=headers,
+                json={"title": "reserved quota", "channel": "web"},
+            ).json()["id"]
+            now = utc_now()
+            with app.state.database.session_factory() as session:
+                policy = (
+                    session.query(QuotaPolicyRow)
+                    .filter(QuotaPolicyRow.tenant_id == DEMO_TENANT_ID)
+                    .one()
+                )
+                policy.daily_token_limit = 1_000
+                session.add(
+                    QuotaLeaseRow(
+                        id=uuid7(),
+                        tenant_id=DEMO_TENANT_ID,
+                        user_id=DEMO_USER_ID,
+                        input_tokens_reserved=1_000,
+                        acquired_at=now,
+                        expires_at=now + timedelta(minutes=5),
+                    )
+                )
+                session.commit()
+            limited = client.post(
+                "/api/v1/chat/completions",
+                headers=headers,
+                json={
+                    "conversation_id": conversation,
+                    "message": "this request must remain outside the reserved daily budget",
+                    "stream": False,
+                    "response_mode": "general",
+                },
+            )
+            self.assertEqual(limited.status_code, 429, limited.text)
+            self.assertEqual(limited.json()["code"], "DAILY_TOKEN_QUOTA_EXCEEDED")
 
 
 if __name__ == "__main__":

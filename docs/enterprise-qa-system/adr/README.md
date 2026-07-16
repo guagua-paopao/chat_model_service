@@ -50,3 +50,13 @@
 | [ADR-030](ADR-030-untrusted-source-boundary-and-injection-redaction.md) | SOURCE 不可信边界与注入句移除 | Accepted |
 | [ADR-031](ADR-031-exact-pgvector-before-ann.md) | 正确性基线后再选 ANN | Accepted |
 | [ADR-032](ADR-032-no-semantic-cache-until-authorization-invalidation-proven.md) | 安全证明前不启用 semantic cache | Accepted |
+
+## S5 新增 ADR
+
+| ADR | 决策 | 状态 |
+|---|---|---|
+| [ADR-033](ADR-033-server-resolved-groups-and-central-policy.md) | 服务端目录态用户组与集中策略判定 | Accepted |
+| [ADR-034](ADR-034-rag-config-evaluate-approve-publish-rollback.md) | 配置评测、独立审批、发布与不可变回滚 | Accepted |
+| [ADR-035](ADR-035-database-serialized-shared-quota-leases.md) | 数据库串行化共享配额与并发租约 | Accepted |
+| [ADR-036](ADR-036-tenant-governance-hash-chain.md) | 租户级治理哈希链审计 | Accepted |
+| [ADR-037](ADR-037-safe-governance-summaries-and-incident-state-machine.md) | 低基数治理摘要与事件状态机 | Accepted |

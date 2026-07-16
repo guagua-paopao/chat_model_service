@@ -161,6 +161,7 @@ class IngestionIntegrationTests(unittest.TestCase):
             display_name="Other",
             locale="zh-CN",
             roles=("knowledge_admin",),
+            groups=(),
             permissions=("qa:knowledge:read",),
         )
         hidden = self.app.state.ingestion_service.debug_search(

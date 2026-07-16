@@ -1,11 +1,12 @@
 openapi: 3.1.0
 info:
   title: Enterprise QA System API
-  version: 1.4.0-s4
+  version: 1.5.0-s5
   description: |
     企业知识问答系统的核心契约。租户从已验证的身份上下文解析，客户端不得自报 tenant_id。
     S4 知识问答在 ACL 过滤后执行混合检索与重排，并保存检索、提示词、模型和引用快照。
     流式知识回答先缓冲并验证引用，再向客户端输出；SSE 事件结构见 S4 API 设计文档。
+    S5 增加服务端目录态、集中授权、不可变配置门禁、数据库共享配额、哈希链治理审计和安全事件台账。
 servers:
   - url: https://qa.example.com/api/v1
     description: Production placeholder
@@ -20,6 +21,7 @@ tags:
   - name: Retrieval
   - name: Feedback
   - name: Operations
+  - name: Enterprise Governance
 paths:
   /me:
     get:
@@ -538,6 +540,266 @@ paths:
                     type: object
                     additionalProperties: {type: string}
         '503': {$ref: '#/components/responses/ServiceUnavailable'}
+  /admin/users:
+    get:
+      tags: [Enterprise Governance]
+      summary: List tenant-scoped provisioned users and server-resolved memberships
+      operationId: listGovernanceUsers
+      security: [{oauth2: [qa:admin:users:read]}]
+      responses:
+        '200':
+          description: Provisioned users
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminUserList'}
+        '403': {$ref: '#/components/responses/Forbidden'}
+  /admin/users/{user_id}:
+    patch:
+      tags: [Enterprise Governance]
+      summary: Activate or disable a user with optimistic concurrency and approval evidence
+      operationId: patchGovernanceUser
+      security: [{oauth2: [qa:admin:users:write]}]
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/UserStatusPatch'}
+      responses:
+        '200':
+          description: Updated user; effective on the next principal resolution
+          headers: {ETag: {schema: {type: string}}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AdminUser'}
+        '412': {$ref: '#/components/responses/PreconditionFailed'}
+  /admin/groups:
+    get:
+      tags: [Enterprise Governance]
+      summary: List tenant groups and effective member counts
+      operationId: listGovernanceGroups
+      security: [{oauth2: [qa:admin:groups:read]}]
+      responses:
+        '200':
+          description: Groups
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: {type: array, items: {$ref: '#/components/schemas/AdminGroup'}}
+  /admin/rag-configs:
+    get:
+      tags: [Enterprise Governance]
+      summary: List immutable RAG configuration versions
+      operationId: listRagConfigs
+      security: [{oauth2: [qa:rag-config:read]}]
+      responses:
+        '200':
+          description: Versions
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RagConfigList'}
+    post:
+      tags: [Enterprise Governance]
+      summary: Create an immutable RAG configuration draft
+      operationId: createRagConfigDraft
+      security: [{oauth2: [qa:rag-config:write]}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/RagConfigDraft'}
+      responses:
+        '201':
+          description: Draft created
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RagConfig'}
+        '422': {$ref: '#/components/responses/UnprocessableContent'}
+  /admin/rag-configs/{config_id}/evaluations:
+    post:
+      tags: [Enterprise Governance]
+      summary: Run the server-owned, versioned configuration gate
+      operationId: evaluateRagConfig
+      security: [{oauth2: [qa:rag-config:evaluate]}]
+      parameters: [{$ref: '#/components/parameters/ConfigId'}]
+      responses:
+        '201':
+          description: Evaluation evidence
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RagConfigEvaluation'}
+  /admin/rag-configs/{config_id}/approve:
+    post:
+      tags: [Enterprise Governance]
+      summary: Independently approve a passing configuration
+      operationId: approveRagConfig
+      security: [{oauth2: [qa:rag-config:approve]}]
+      parameters: [{$ref: '#/components/parameters/ConfigId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernanceAction'}
+      responses:
+        '200':
+          description: Approved
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RagConfig'}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/rag-configs/{config_id}/publish:
+    post:
+      tags: [Enterprise Governance]
+      summary: Publish an independently approved configuration
+      operationId: publishRagConfig
+      security: [{oauth2: [qa:rag-config:publish]}]
+      parameters: [{$ref: '#/components/parameters/ConfigId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernanceAction'}
+      responses:
+        '200':
+          description: Published
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RagConfig'}
+  /admin/rag-configs/{config_id}/rollback:
+    post:
+      tags: [Enterprise Governance]
+      summary: Publish a new immutable clone of a previously passing version
+      operationId: rollbackRagConfig
+      security: [{oauth2: [qa:rag-config:rollback]}]
+      parameters: [{$ref: '#/components/parameters/ConfigId'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/GovernanceAction'}
+      responses:
+        '200':
+          description: Rollback clone published
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/RagConfig'}
+  /admin/quota-policies/tenant:
+    get:
+      tags: [Enterprise Governance]
+      summary: Get the active tenant quota policy
+      operationId: getTenantQuota
+      security: [{oauth2: [qa:quota:read]}]
+      responses:
+        '200':
+          description: Tenant quota policy
+          headers: {ETag: {schema: {type: string}}}
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/QuotaPolicy'}
+    patch:
+      tags: [Enterprise Governance]
+      summary: Update the active tenant quota policy
+      operationId: patchTenantQuota
+      security: [{oauth2: [qa:quota:write]}]
+      parameters: [{$ref: '#/components/parameters/IfMatch'}]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: '#/components/schemas/QuotaPolicyPatch'}
+      responses:
+        '200':
+          description: Updated policy
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/QuotaPolicy'}
+  /admin/audit-logs:
+    get:
+      tags: [Enterprise Governance]
+      summary: Query tenant-scoped tamper-evident governance events
+      operationId: listGovernanceAudit
+      security: [{oauth2: [qa:audit:read]}]
+      responses:
+        '200':
+          description: Safe audit events; raw prompts and secrets are excluded
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/GovernanceAuditList'}
+  /admin/audit-logs/integrity:
+    get:
+      tags: [Enterprise Governance]
+      summary: Verify the per-tenant governance hash chain
+      operationId: verifyGovernanceAudit
+      security: [{oauth2: [qa:audit:verify]}]
+      responses:
+        '200':
+          description: Integrity result
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/AuditIntegrity'}
+  /admin/usage-summary:
+    get:
+      tags: [Enterprise Governance]
+      summary: Aggregate bounded tenant usage without high-cardinality labels
+      operationId: getUsageSummary
+      security: [{oauth2: [qa:usage:read]}]
+      responses:
+        '200':
+          description: Usage summary
+          content: {application/json: {schema: {type: object}}}
+  /admin/quality-summary:
+    get:
+      tags: [Enterprise Governance]
+      summary: Aggregate retrieval, abstention, citation and feedback quality signals
+      operationId: getQualitySummary
+      security: [{oauth2: [qa:usage:read]}]
+      responses:
+        '200':
+          description: Quality summary
+          content: {application/json: {schema: {type: object}}}
+  /admin/security-incidents:
+    get:
+      tags: [Enterprise Governance]
+      summary: List tenant security incidents
+      operationId: listSecurityIncidents
+      security: [{oauth2: [qa:security-incident:read]}]
+      responses:
+        '200':
+          description: Incidents
+          content: {application/json: {schema: {type: object}}}
+    post:
+      tags: [Enterprise Governance]
+      summary: Open a security incident with safe evidence references
+      operationId: createSecurityIncident
+      security: [{oauth2: [qa:security-incident:write]}]
+      responses:
+        '201':
+          description: Incident opened
+          content: {application/json: {schema: {$ref: '#/components/schemas/SecurityIncident'}}}
+  /admin/security-incidents/{incident_id}:
+    patch:
+      tags: [Enterprise Governance]
+      summary: Transition a security incident state
+      operationId: patchSecurityIncident
+      security: [{oauth2: [qa:security-incident:write]}]
+      parameters:
+        - name: incident_id
+          in: path
+          required: true
+          schema: {$ref: '#/components/schemas/Uuid'}
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Incident transitioned
+          content: {application/json: {schema: {$ref: '#/components/schemas/SecurityIncident'}}}
 components:
   securitySchemes:
     oauth2:
@@ -553,6 +815,22 @@ components:
             qa:knowledge:write: Create knowledge bases and immutable document versions
             qa:ingestion:read: Read ingestion job status
             qa:ingestion:retry: Retry failed ingestion jobs
+            qa:admin:users:read: Read tenant user lifecycle state
+            qa:admin:users:write: Activate or disable tenant users
+            qa:admin:groups:read: Read tenant groups and member counts
+            qa:rag-config:read: Read immutable RAG configuration metadata
+            qa:rag-config:write: Create RAG configuration drafts
+            qa:rag-config:evaluate: Execute server-owned configuration gates
+            qa:rag-config:approve: Independently approve a passing configuration
+            qa:rag-config:publish: Publish an approved configuration
+            qa:rag-config:rollback: Publish an immutable rollback clone
+            qa:quota:read: Read tenant quota policy
+            qa:quota:write: Change tenant quota policy
+            qa:audit:read: Read safe governance audit events
+            qa:audit:verify: Verify tenant governance audit integrity
+            qa:usage:read: Read aggregate usage and quality summaries
+            qa:security-incident:read: Read tenant security incidents
+            qa:security-incident:write: Create and transition security incidents
   parameters:
     ConversationId:
       name: conversation_id
@@ -581,6 +859,11 @@ components:
       schema: {$ref: '#/components/schemas/Uuid'}
     JobId:
       name: job_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    ConfigId:
+      name: config_id
       in: path
       required: true
       schema: {$ref: '#/components/schemas/Uuid'}
@@ -1007,6 +1290,163 @@ components:
         total_candidates: {type: integer, minimum: 0}
         acl_filtered: {type: boolean, const: true}
         stage: {type: string, const: debug_only_not_connected_to_chat}
+    AdminUser:
+      type: object
+      required: [id, subject, display_name, status, roles, groups, version, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        subject: {type: string}
+        email: {type: [string, 'null'], format: email}
+        display_name: {type: string}
+        status: {type: string, enum: [active, disabled]}
+        roles: {type: array, items: {type: string}}
+        groups: {type: array, items: {type: string}}
+        version: {type: integer, minimum: 1}
+        identity_synced_at: {type: [string, 'null'], format: date-time}
+        disabled_at: {type: [string, 'null'], format: date-time}
+        updated_at: {type: string, format: date-time}
+    AdminUserList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/AdminUser'}}
+    UserStatusPatch:
+      type: object
+      additionalProperties: false
+      required: [status, reason, approval_id]
+      properties:
+        status: {type: string, enum: [active, disabled]}
+        reason: {type: string, minLength: 10, maxLength: 500}
+        approval_id: {type: string, minLength: 3, maxLength: 128}
+    AdminGroup:
+      type: object
+      required: [id, code, display_name, status, member_count, version, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        code: {type: string}
+        display_name: {type: string}
+        external_id: {type: [string, 'null']}
+        status: {type: string, enum: [active, disabled]}
+        member_count: {type: integer, minimum: 0}
+        version: {type: integer, minimum: 1}
+        identity_synced_at: {type: [string, 'null'], format: date-time}
+        updated_at: {type: string, format: date-time}
+    RagConfig:
+      type: object
+      required: [id, code, version, status, prompt_version, config, checksum, evaluation_status, change_reason, created_by, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        code: {type: string, const: grounded-rag}
+        version: {type: integer, minimum: 1}
+        status: {type: string, enum: [draft, evaluated, approved, published, archived]}
+        prompt_version: {type: string}
+        config: {type: object}
+        checksum: {type: string, pattern: '^[0-9a-f]{64}$'}
+        evaluation_status: {type: string, enum: [pending, passed, failed]}
+        change_reason: {type: string}
+        supersedes_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        rollback_of_id: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        created_by: {$ref: '#/components/schemas/Uuid'}
+        created_at: {type: string, format: date-time}
+        approved_by: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        approved_at: {type: [string, 'null'], format: date-time}
+        approval_id: {type: [string, 'null']}
+        published_by: {oneOf: [{$ref: '#/components/schemas/Uuid'}, {type: 'null'}]}
+        published_at: {type: [string, 'null'], format: date-time}
+    RagConfigList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {$ref: '#/components/schemas/RagConfig'}}
+    RagConfigDraft:
+      type: object
+      additionalProperties: false
+      required: [prompt_version, prompt_template, config, reason]
+      properties:
+        prompt_version: {type: string, minLength: 3, maxLength: 64}
+        prompt_template: {type: string, minLength: 100, maxLength: 20000}
+        config: {type: object}
+        reason: {type: string, minLength: 10, maxLength: 500}
+    RagConfigEvaluation:
+      type: object
+      required: [id, rag_config_id, dataset_version, dataset_checksum, evaluator_version, status, gate_result, metrics, thresholds, failed_checks, created_by, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        rag_config_id: {$ref: '#/components/schemas/Uuid'}
+        dataset_version: {type: string}
+        dataset_checksum: {type: string}
+        evaluator_version: {type: string}
+        status: {type: string, const: completed}
+        gate_result: {type: string, enum: [passed, failed]}
+        metrics: {type: object}
+        thresholds: {type: object}
+        failed_checks: {type: array, items: {type: string}}
+        created_by: {$ref: '#/components/schemas/Uuid'}
+        created_at: {type: string, format: date-time}
+    GovernanceAction:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: {type: string, minLength: 10, maxLength: 500}
+        approval_id: {type: string, minLength: 3, maxLength: 128}
+    QuotaPolicy:
+      type: object
+      required: [id, scope_type, scope_id, requests_per_minute, concurrent_requests, daily_token_limit, monthly_cost_limit, currency, enabled, version, updated_by, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        scope_type: {type: string, enum: [tenant, user]}
+        scope_id: {type: string}
+        requests_per_minute: {type: integer, minimum: 1}
+        concurrent_requests: {type: integer, minimum: 1}
+        daily_token_limit: {type: integer, minimum: 1000}
+        monthly_cost_limit: {type: number, minimum: 0}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        enabled: {type: boolean}
+        version: {type: integer, minimum: 1}
+        updated_by: {$ref: '#/components/schemas/Uuid'}
+        updated_at: {type: string, format: date-time}
+    QuotaPolicyPatch:
+      type: object
+      additionalProperties: false
+      required: [requests_per_minute, concurrent_requests, daily_token_limit, monthly_cost_limit, reason, approval_id]
+      properties:
+        requests_per_minute: {type: integer, minimum: 1, maximum: 10000}
+        concurrent_requests: {type: integer, minimum: 1, maximum: 1000}
+        daily_token_limit: {type: integer, minimum: 1000, maximum: 1000000000}
+        monthly_cost_limit: {type: number, minimum: 0, maximum: 10000000}
+        currency: {type: string, pattern: '^[A-Z]{3}$'}
+        enabled: {type: boolean}
+        reason: {type: string, minLength: 10, maxLength: 500}
+        approval_id: {type: string, minLength: 3, maxLength: 128, pattern: '^[A-Za-z0-9._:-]+$'}
+    GovernanceAuditList:
+      type: object
+      required: [items]
+      properties:
+        items: {type: array, items: {type: object}}
+        next_sequence: {type: [integer, 'null'], minimum: 1}
+    AuditIntegrity:
+      type: object
+      required: [valid, checked_events]
+      properties:
+        valid: {type: boolean}
+        checked_events: {type: integer, minimum: 0}
+        first_invalid_sequence: {type: [integer, 'null'], minimum: 1}
+    SecurityIncident:
+      type: object
+      required: [id, title, category, severity, status, evidence_refs, owner_user_id, version, created_by, created_at, updated_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        title: {type: string}
+        category: {type: string}
+        severity: {type: string, enum: [P0, P1, P2, P3]}
+        status: {type: string, enum: [open, triaged, contained, resolved, closed]}
+        evidence_refs: {type: array, items: {type: string}}
+        owner_user_id: {$ref: '#/components/schemas/Uuid'}
+        version: {type: integer, minimum: 1}
+        created_by: {$ref: '#/components/schemas/Uuid'}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
     Problem:
       type: object
       required: [type, title, status, code, detail, request_id, retryable]

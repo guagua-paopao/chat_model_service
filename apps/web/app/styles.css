@@ -60,10 +60,24 @@ button.citation small { color: #607268; }
 .hit { margin-top: 9px; padding: 12px; border: 1px solid #d7e3dc; border-radius: 10px; background: white; }
 .hit p { margin: 7px 0 0; color: #46564c; white-space: pre-wrap; }
 .logout { margin-top: 18px; }
+.admin-main { display: block; }
+.admin-card { width: min(1180px, 100%); margin: 0 auto; }
+.admin-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+.admin-heading h1 { margin-bottom: 6px; }
+.admin-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.metric { min-height: 128px; padding: 18px; border: 1px solid #d3dfd8; border-radius: 14px; background: #f8fbf9; }
+.metric small, .metric span, .row span { display: block; color: #607268; }
+.metric strong { display: block; margin: 12px 0 4px; font-size: 24px; }
+.admin-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+.row { padding: 11px 0; border-bottom: 1px solid #d7e3dc; }
+.row strong { display: block; margin-bottom: 3px; }
+.audit-row { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
 
 @media (max-width: 620px) {
   main { padding: 14px; }
   .card { padding: 24px 18px; border-radius: 18px; }
   .actions button { flex: 1 1 42%; }
   .search-form { grid-template-columns: 1fr; }
+  .admin-grid, .admin-columns { grid-template-columns: 1fr; }
+  .admin-heading { display: block; }
 }

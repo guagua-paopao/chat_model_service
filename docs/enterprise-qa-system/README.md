@@ -1,6 +1,6 @@
 # 企业级大模型问答系统：项目文档包
 
-> 文档版本：v1.4-s4  
+> 文档版本：v1.5-s5  
 > 基线日期：2026-07-16  
 > 目标读者：产品经理、架构师、后端/前端/算法/测试/DevOps 工程师、安全与运维人员
 
@@ -52,6 +52,7 @@ flowchart LR
 | [S2 模型与流式聊天证据包](s2/README.md) | Model Gateway、Adapter、SSE、取消/重试、用量成本、测试与 Gate | 全团队 |
 | [S3 安全文档摄取证据包](s3/README.md) | 隔离上传、解析分块、版本、ACL 与调试检索 | 全团队 |
 | [S4 可溯源 RAG 证据包](s4/README.md) | Hybrid retrieval、rerank、grounding、引用、拒答、反馈与评测 | 全团队 |
+| [S5 企业治理闭环证据包](s5/README.md) | 服务端目录态、集中授权、配置门禁、共享配额、审计和事件 | 全团队 |
 | [ADR 目录](adr/README.md) | 不可变的重要架构和安全决策 | 架构/相关 Owner |
 | [00-项目章程与范围](00-project-charter-and-scope.md) | 立项、边界、排期、预算假设、RACI、风险 | 项目经理/产品/架构 |
 | [01-需求与应用场景](01-requirements-and-use-cases.md) | 角色、用户故事、功能与非功能需求、验收场景 | 产品/测试 |
@@ -93,6 +94,10 @@ flowchart LR
 ## S4 阶段补充
 
 [S4 可溯源 RAG 证据包](s4/README.md) 覆盖 ACL-first pgvector/FTS、RRF/rerank、context packing、证据门槛、grounded 输出缓冲与 Source ID 校验、引用再鉴权、反馈、20 条合成评测、部署参数、风险和 Gate。S4 工程基线不替代真实业务 UAT、供应商/数据审批、中文检索、性能、Kubernetes 或 DR 证据。
+
+## S5 阶段补充
+
+[S5 企业治理闭环证据包](s5/README.md) 覆盖服务端用户/角色/组、集中 Policy、group ACL、配置 draft/evaluate/approve/publish/rollback、数据库共享配额/租约、租户治理哈希链、安全事件、摘要 API 和控制台。S5 只在本地/合成范围完成，不替代企业 IdP/SCIM、真实评测 Worker、WORM/SIEM、目标告警、红队、性能、Kubernetes 或 DR 证据。
 
 ## 6. Definition of Success
 

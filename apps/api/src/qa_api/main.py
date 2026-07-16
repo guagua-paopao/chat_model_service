@@ -23,6 +23,7 @@ from qa_api.config import Settings
 from qa_api.cursors import CursorCodec
 from qa_api.domain import ApiError, ConversationRecord, MessageRecord, Principal
 from qa_api.embedding import build_embedding_adapter
+from qa_api.governance_api import build_governance_router
 from qa_api.ingestion import DocumentUpload, IngestionService
 from qa_api.model_gateway import build_model_gateway
 from qa_api.models import (
@@ -74,6 +75,7 @@ from qa_api.persistence import (
     KnowledgeBaseRow,
     utc_now,
 )
+from qa_api.policy import PolicyEngine
 from qa_api.rag import CitationView, RagService
 from qa_api.repositories import (
     ConversationRepository,
@@ -97,13 +99,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     object_store = build_object_store(resolved_settings)
     embedding_adapter = build_embedding_adapter(resolved_settings)
     reranker = build_reranker(resolved_settings)
+    policy = PolicyEngine()
     rag_service = RagService(
         settings=resolved_settings,
         session_factory=database.session_factory,
         embedding=embedding_adapter,
         reranker=reranker,
     )
-    quota_manager = QuotaManager(resolved_settings)
+    quota_manager = QuotaManager(resolved_settings, database.session_factory)
     cancellation_registry = CancellationRegistry()
     chat_service = ChatService(
         settings=resolved_settings,
@@ -136,7 +139,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Enterprise QA API",
-        version="0.4.0-s4",
+        version="0.5.0-s5",
         openapi_url="/api/v1/openapi.json",
         docs_url="/api/v1/docs" if resolved_settings.app_env != "production" else None,
         redoc_url=None,
@@ -151,6 +154,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.object_store = object_store
     app.state.ingestion_service = ingestion_service
     app.state.rag_service = rag_service
+    app.state.policy_engine = policy
     app.add_middleware(RequestContextMiddleware, settings=resolved_settings)
 
     def get_session() -> Iterator[Session]:
@@ -173,9 +177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def conversations(session: Session) -> ConversationRepository:
         return ConversationRepository(session, cursor_codec)
 
-    def require(principal: Principal, permission: str) -> None:
-        if permission not in principal.permissions:
-            raise ApiError(403, "PERMISSION_DENIED", "Access denied", "Permission denied.")
+    require = policy.require
 
     @app.exception_handler(ApiError)
     async def api_error_handler(request: Request, exc: ApiError) -> JSONResponse:
@@ -249,6 +251,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             id=principal.user_id,
             tenant=TenantSummary(id=principal.tenant_id, code=principal.tenant_code),
             roles=list(principal.roles),
+            groups=list(principal.groups),
             permissions=list(principal.permissions),
             display_name=principal.display_name,
             locale=principal.locale,
@@ -737,6 +740,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "updated_at": row.updated_at,
             }
         )
+
+    app.include_router(
+        build_governance_router(
+            settings=resolved_settings,
+            get_session=get_session,
+            get_principal=get_principal,
+            policy=policy,
+        )
+    )
 
     return app
 

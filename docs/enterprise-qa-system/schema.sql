@@ -529,3 +529,171 @@ CREATE INDEX idempotency_records_expiry_idx ON idempotency_records (expires_at);
 -- CREATE POLICY documents_tenant_isolation ON documents
 --   USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
 --   WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+
+-- S5 runtime governance delta. The executable source of truth remains Alembic 0005/0006;
+-- these tables document the production PostgreSQL target shape.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS version integer NOT NULL DEFAULT 1;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS identity_synced_at timestamptz;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS disabled_at timestamptz;
+
+CREATE TABLE groups (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    code varchar(128) NOT NULL,
+    display_name varchar(200) NOT NULL,
+    external_id varchar(255),
+    status varchar(24) NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
+    version integer NOT NULL DEFAULT 1 CHECK (version >= 1),
+    identity_synced_at timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, code),
+    UNIQUE (tenant_id, id)
+);
+
+CREATE TABLE group_members (
+    tenant_id uuid NOT NULL,
+    group_id uuid NOT NULL,
+    user_id uuid NOT NULL,
+    source varchar(32) NOT NULL DEFAULT 'directory',
+    valid_from timestamptz NOT NULL DEFAULT now(),
+    valid_until timestamptz,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (tenant_id, group_id, user_id),
+    FOREIGN KEY (tenant_id, group_id) REFERENCES groups(tenant_id, id),
+    FOREIGN KEY (tenant_id, user_id) REFERENCES users(tenant_id, id)
+);
+CREATE INDEX group_members_user_idx ON group_members (tenant_id, user_id);
+
+CREATE TABLE rag_configs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    code varchar(64) NOT NULL,
+    version integer NOT NULL CHECK (version >= 1),
+    status varchar(24) NOT NULL CHECK (
+        status IN ('draft', 'evaluated', 'approved', 'published', 'archived')
+    ),
+    prompt_version varchar(64) NOT NULL,
+    prompt_template text NOT NULL,
+    config_json jsonb NOT NULL,
+    checksum char(64) NOT NULL,
+    evaluation_status varchar(24) NOT NULL CHECK (
+        evaluation_status IN ('pending', 'passed', 'failed')
+    ),
+    change_reason varchar(500) NOT NULL,
+    supersedes_id uuid,
+    rollback_of_id uuid,
+    created_by uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    approved_by uuid,
+    approved_at timestamptz,
+    approval_id varchar(128),
+    published_by uuid,
+    published_at timestamptz,
+    UNIQUE (tenant_id, code, version),
+    UNIQUE (tenant_id, id)
+);
+CREATE INDEX rag_configs_published_idx
+    ON rag_configs (tenant_id, code, status, version DESC);
+
+CREATE TABLE rag_config_evaluations (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    rag_config_id uuid NOT NULL REFERENCES rag_configs(id),
+    dataset_version varchar(128) NOT NULL,
+    dataset_checksum char(64) NOT NULL,
+    evaluator_version varchar(64) NOT NULL,
+    status varchar(24) NOT NULL CHECK (status = 'completed'),
+    gate_result varchar(16) NOT NULL CHECK (gate_result IN ('passed', 'failed')),
+    metrics jsonb NOT NULL,
+    thresholds jsonb NOT NULL,
+    failed_checks jsonb NOT NULL,
+    created_by uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    completed_at timestamptz,
+    UNIQUE (tenant_id, id)
+);
+
+CREATE TABLE quota_policies (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    scope_type varchar(16) NOT NULL CHECK (scope_type IN ('tenant', 'user')),
+    scope_id varchar(128) NOT NULL,
+    requests_per_minute integer NOT NULL CHECK (requests_per_minute > 0),
+    concurrent_requests integer NOT NULL CHECK (concurrent_requests > 0),
+    daily_token_limit integer NOT NULL CHECK (daily_token_limit > 0),
+    monthly_cost_limit numeric(18,8) NOT NULL CHECK (monthly_cost_limit >= 0),
+    currency char(3) NOT NULL,
+    enabled boolean NOT NULL DEFAULT true,
+    version integer NOT NULL DEFAULT 1,
+    created_by uuid NOT NULL,
+    updated_by uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, scope_type, scope_id),
+    UNIQUE (tenant_id, id)
+);
+
+CREATE TABLE quota_windows (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    user_id uuid NOT NULL,
+    window_kind varchar(16) NOT NULL,
+    window_start timestamptz NOT NULL,
+    request_count integer NOT NULL DEFAULT 0,
+    input_tokens_reserved integer NOT NULL DEFAULT 0,
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, user_id, window_kind, window_start)
+);
+
+CREATE TABLE quota_leases (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    user_id uuid NOT NULL,
+    input_tokens_reserved integer NOT NULL DEFAULT 0,
+    acquired_at timestamptz NOT NULL DEFAULT now(),
+    expires_at timestamptz NOT NULL
+);
+CREATE INDEX quota_leases_tenant_expiry_idx ON quota_leases (tenant_id, expires_at);
+CREATE UNIQUE INDEX rag_configs_one_published_uq
+    ON rag_configs (tenant_id, code) WHERE status = 'published';
+
+CREATE TABLE governance_audit_logs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    sequence_no integer NOT NULL,
+    actor_user_id uuid NOT NULL,
+    action varchar(128) NOT NULL,
+    resource_type varchar(64) NOT NULL,
+    resource_id varchar(128) NOT NULL,
+    result varchar(16) NOT NULL,
+    reason varchar(500) NOT NULL,
+    approval_id varchar(128),
+    request_id varchar(128) NOT NULL,
+    trace_id varchar(64),
+    details_safe jsonb NOT NULL DEFAULT '{}'::jsonb,
+    previous_hash char(64) NOT NULL,
+    event_hash char(64) NOT NULL,
+    occurred_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, sequence_no)
+);
+
+CREATE TABLE security_incidents (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    title varchar(300) NOT NULL,
+    category varchar(64) NOT NULL,
+    severity varchar(8) NOT NULL CHECK (severity IN ('P0', 'P1', 'P2', 'P3')),
+    status varchar(24) NOT NULL CHECK (
+        status IN ('open', 'triaged', 'contained', 'resolved', 'closed')
+    ),
+    evidence_refs jsonb NOT NULL DEFAULT '[]'::jsonb,
+    owner_user_id uuid NOT NULL,
+    resolution_safe varchar(1000),
+    version integer NOT NULL DEFAULT 1,
+    created_by uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    resolved_at timestamptz,
+    UNIQUE (tenant_id, id)
+);

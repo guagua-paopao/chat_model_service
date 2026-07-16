@@ -91,6 +91,7 @@ class Settings:
     reranker_provider_api_key: str | None = None
     reranker_provider_model: str | None = None
     reranker_timeout_seconds: float = 20.0
+    local_governance_evaluator_enabled: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -216,6 +217,10 @@ class Settings:
             reranker_provider_api_key=os.getenv("QA_RERANKER_PROVIDER_API_KEY") or None,
             reranker_provider_model=os.getenv("QA_RERANKER_PROVIDER_MODEL") or None,
             reranker_timeout_seconds=float(os.getenv("QA_RERANKER_TIMEOUT_SECONDS", "20")),
+            local_governance_evaluator_enabled=_as_bool(
+                os.getenv("QA_LOCAL_GOVERNANCE_EVALUATOR_ENABLED"),
+                app_env in {"local", "test", "dev"},
+            ),
         )
         return settings.validated()
 
@@ -365,4 +370,6 @@ class Settings:
                 raise ValueError("production RAG requires PostgreSQL with pgvector")
         if not 0.1 <= self.reranker_timeout_seconds <= 120:
             raise ValueError("QA_RERANKER_TIMEOUT_SECONDS must be between 0.1 and 120")
+        if self.app_env in {"staging", "production"} and self.local_governance_evaluator_enabled:
+            raise ValueError("the local governance evaluator is forbidden outside development")
         return self

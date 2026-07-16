@@ -1,0 +1,84 @@
+phase: S5
+name: enterprise-identity-policy-config-quota-audit-governance
+version: s5-v1.0-local-candidate
+date: 2026-07-16
+status: local_engineering_pass_production_no_go
+data_scope: synthetic_public_or_explicitly_approved_non_sensitive_only
+
+implemented:
+  identity:
+    - tenant_scoped_user_role_group_directory
+    - server_resolved_current_roles_and_groups
+    - next_request_user_disable
+    - local_governance_approver_and_auditor_personas
+  authorization:
+    - centralized_fail_closed_policy_engine
+    - acl_first_user_role_group_retrieval
+    - current_group_citation_reauthorization
+  configuration:
+    - immutable_versioned_rag_config
+    - server_owned_local_structural_evaluation
+    - creator_approver_separation_of_duties
+    - evaluate_approve_publish_state_machine
+    - immutable_higher_version_rollback_clone
+  quota:
+    - versioned_tenant_policy_with_etag
+    - database_serialized_minute_windows
+    - tenant_and_user_ttl_concurrency_leases
+    - daily_token_and_monthly_cost_ledger_checks
+  governance:
+    - tenant_sequence_hash_chain
+    - tamper_integrity_verification
+    - safe_31_day_usage_and_quality_summaries
+    - p0_p3_security_incident_state_machine
+    - read_only_admin_console
+  api_version: 1.5.0-s5
+  migration_version: 20260716_0006
+
+decisions:
+  log: 09-decision-log.md
+  adrs: [ADR-033, ADR-034, ADR-035, ADR-036, ADR-037]
+
+verification:
+  python_tests: 66
+  unittest_subtests: 35
+  total_coverage_percent: 88.64
+  governance_coverage_percent: 86
+  governance_api_coverage_percent: 96
+  ruff: passed
+  mypy_strict: passed
+  contract_validation: passed_9_yaml_222_refs_35_paths
+  s4_synthetic_evaluation_cases: 20
+  s4_unauthorized_leakage_count: 0
+  sqlite_migration_up_down_up: passed
+  postgresql_migration_head: 20260716_0006
+  next_lint_typecheck_build: passed
+  compose_services_running: 8
+  s5_full_stack_smoke: passed
+  s4_full_stack_regression_smoke: passed
+  python_known_vulnerabilities: 0
+  npm_production_known_vulnerabilities: 0
+  helm_cli_lint: not_run_cli_unavailable
+  gitleaks: not_run_cli_unavailable
+
+production_blockers:
+  - enterprise_oidc_scim_group_sync_and_revocation_sla
+  - approved_external_evaluator_business_golden_holdout_and_red_team
+  - independent_siem_worm_anchor_retention_and_reconciliation
+  - service_account_upload_quota_and_cross_instance_cancellation
+  - target_load_quota_lock_contention_and_failover_benchmark
+  - kubernetes_secret_manager_network_policy_tls_and_ingress
+  - sbom_image_signing_hashed_locks_secret_and_license_gates
+  - production_observability_alert_on_call_and_incident_drills
+  - backup_restore_rpo_rto_and_disaster_recovery
+  - named_product_security_data_audit_and_sre_signoff
+
+gate:
+  local_engineering: pass
+  s6_synthetic_or_individually_approved_work: conditional_go
+  real_data: no_go
+  staging: no_go
+  production: no_go
+
+publication: local_archive_only_until_explicit_user_confirmation_for_s5
+branch: agent/s5-enterprise-governance

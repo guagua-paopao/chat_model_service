@@ -30,6 +30,7 @@ class MeResponse(StrictModel):
     id: UUID
     tenant: TenantSummary
     roles: list[str]
+    groups: list[str]
     permissions: list[str]
     display_name: str
     locale: str
@@ -485,3 +486,221 @@ class Problem(StrictModel):
     request_id: str
     retryable: bool = False
     errors: list[dict[str, str]] | None = None
+
+
+class AdminUserResponse(StrictModel):
+    id: UUID
+    subject: str
+    email: str | None
+    display_name: str
+    status: Literal["active", "disabled"]
+    roles: list[str]
+    groups: list[str]
+    version: int = Field(ge=1)
+    identity_synced_at: datetime | None
+    disabled_at: datetime | None
+    updated_at: datetime
+
+
+class AdminUserListResponse(StrictModel):
+    items: list[AdminUserResponse]
+
+
+class AdminUserPatch(StrictModel):
+    status: Literal["active", "disabled"]
+    reason: str = Field(min_length=10, max_length=500)
+    approval_id: str = Field(min_length=3, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+
+
+class AdminGroupResponse(StrictModel):
+    id: UUID
+    code: str
+    display_name: str
+    external_id: str | None
+    status: Literal["active", "disabled"]
+    member_count: int = Field(ge=0)
+    version: int = Field(ge=1)
+    identity_synced_at: datetime | None
+    updated_at: datetime
+
+
+class AdminGroupListResponse(StrictModel):
+    items: list[AdminGroupResponse]
+
+
+class RagConfigDraftCreate(StrictModel):
+    prompt_version: str = Field(min_length=3, max_length=64, pattern=r"^[A-Za-z0-9._-]+$")
+    prompt_template: str = Field(min_length=100, max_length=20_000)
+    config: dict[str, Any]
+    reason: str = Field(min_length=10, max_length=500)
+
+
+class RagConfigEvaluationResponse(StrictModel):
+    id: UUID
+    rag_config_id: UUID
+    dataset_version: str
+    dataset_checksum: str
+    evaluator_version: str
+    status: Literal["completed"]
+    gate_result: Literal["passed", "failed"]
+    metrics: dict[str, Any]
+    thresholds: dict[str, Any]
+    failed_checks: list[str]
+    created_by: UUID
+    created_at: datetime
+    completed_at: datetime | None
+
+
+class RagConfigResponse(StrictModel):
+    id: UUID
+    code: str
+    version: int = Field(ge=1)
+    status: Literal["draft", "evaluated", "approved", "published", "archived"]
+    prompt_version: str
+    config: dict[str, Any]
+    checksum: str
+    evaluation_status: Literal["pending", "passed", "failed"]
+    change_reason: str
+    supersedes_id: UUID | None
+    rollback_of_id: UUID | None
+    created_by: UUID
+    created_at: datetime
+    approved_by: UUID | None
+    approved_at: datetime | None
+    approval_id: str | None
+    published_by: UUID | None
+    published_at: datetime | None
+
+
+class RagConfigListResponse(StrictModel):
+    items: list[RagConfigResponse]
+
+
+class GovernanceActionRequest(StrictModel):
+    reason: str = Field(min_length=10, max_length=500)
+    approval_id: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9._:-]+$",
+    )
+
+
+class QuotaPolicyPatch(StrictModel):
+    requests_per_minute: int = Field(ge=1, le=10_000)
+    concurrent_requests: int = Field(ge=1, le=1_000)
+    daily_token_limit: int = Field(ge=1_000, le=1_000_000_000)
+    monthly_cost_limit: Decimal = Field(ge=0, le=10_000_000)
+    currency: str = Field(default="USD", pattern=r"^[A-Z]{3}$")
+    enabled: bool = True
+    reason: str = Field(min_length=10, max_length=500)
+    approval_id: str = Field(min_length=3, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+
+
+class QuotaPolicyResponse(StrictModel):
+    id: UUID
+    scope_type: Literal["tenant", "user"]
+    scope_id: str
+    requests_per_minute: int
+    concurrent_requests: int
+    daily_token_limit: int
+    monthly_cost_limit: Decimal
+    currency: str
+    enabled: bool
+    version: int
+    updated_by: UUID
+    updated_at: datetime
+
+
+class GovernanceAuditResponse(StrictModel):
+    id: UUID
+    sequence_no: int
+    actor_user_id: UUID
+    action: str
+    resource_type: str
+    resource_id: str
+    result: str
+    reason: str
+    approval_id: str | None
+    request_id: str
+    trace_id: str | None
+    details_safe: dict[str, Any]
+    previous_hash: str
+    event_hash: str
+    occurred_at: datetime
+
+
+class GovernanceAuditListResponse(StrictModel):
+    items: list[GovernanceAuditResponse]
+    next_sequence: int | None = None
+
+
+class AuditIntegrityResponse(StrictModel):
+    valid: bool
+    checked_events: int
+    first_invalid_sequence: int | None = None
+
+
+class UsageSummaryResponse(StrictModel):
+    from_time: datetime
+    to_time: datetime
+    requests: int
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+    amount: Decimal
+    currency: str
+
+
+class QualitySummaryResponse(StrictModel):
+    from_time: datetime
+    to_time: datetime
+    retrieval_runs: int
+    abstentions: int
+    abstention_rate: float
+    citations: int
+    positive_feedback: int
+    negative_feedback: int
+
+
+class SecurityIncidentCreate(StrictModel):
+    title: str = Field(min_length=5, max_length=300)
+    category: Literal[
+        "prompt_injection",
+        "data_exposure",
+        "access_control",
+        "credential_exposure",
+        "abuse",
+        "other",
+    ]
+    severity: Literal["P0", "P1", "P2", "P3"]
+    evidence_refs: list[str] = Field(default_factory=list, max_length=20)
+    owner_user_id: UUID
+    reason: str = Field(min_length=10, max_length=500)
+
+
+class SecurityIncidentPatch(StrictModel):
+    status: Literal["triaged", "contained", "resolved", "closed"]
+    resolution_safe: str | None = Field(default=None, max_length=1000)
+    reason: str = Field(min_length=10, max_length=500)
+    approval_id: str = Field(min_length=3, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+
+
+class SecurityIncidentResponse(StrictModel):
+    id: UUID
+    title: str
+    category: str
+    severity: Literal["P0", "P1", "P2", "P3"]
+    status: Literal["open", "triaged", "contained", "resolved", "closed"]
+    evidence_refs: list[str]
+    owner_user_id: UUID
+    resolution_safe: str | None
+    version: int
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+    resolved_at: datetime | None
+
+
+class SecurityIncidentListResponse(StrictModel):
+    items: list[SecurityIncidentResponse]

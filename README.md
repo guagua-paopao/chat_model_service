@@ -9,6 +9,7 @@
 - [S2 Model Gateway 与流式聊天](docs/enterprise-qa-system/s2/README.md)
 - [S3 安全文档摄取与调试检索](docs/enterprise-qa-system/s3/README.md)
 - [S4 可溯源 RAG 闭环](docs/enterprise-qa-system/s4/README.md)
+- [S5 企业治理闭环](docs/enterprise-qa-system/s5/README.md)
 
 建议从以下三份开始：
 
@@ -21,7 +22,7 @@
 - [OpenAPI 3.1](docs/enterprise-qa-system/openapi.yaml)
 - [PostgreSQL + pgvector 参考 DDL](docs/enterprise-qa-system/schema.sql)
 
-## S4 本地启动
+## S5 本地启动
 
 要求：Python 3.12、Node.js 22、Docker 26+。PowerShell 中执行：
 
@@ -47,12 +48,13 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/me -Headers @{Authorization="Bear
 ```powershell
 .\.venv\Scripts\python.exe scripts\smoke_s4.py
 .\.venv\Scripts\python.exe scripts\evaluate_s4.py
+.\.venv\Scripts\python.exe scripts\smoke_s5.py
 ```
 
 开发令牌、Fake Provider/Embedding/Reranker 和签名扫描器只允许 `local/test/dev`，生产配置会在启动时拒绝它们。S4 提供 ACL-first hybrid retrieval、grounded/search-only、引用再鉴权与拒答，但合成评测不代表真实业务质量。完整教学、字段和故障注入见 [S4 开发手册](docs/enterprise-qa-system/s4/04-development-tutorial-and-fault-injection.md)。
 
-## S4 当前基线
+## S5 当前基线
 
-S4 已完成版本化 hybrid retrieval/rerank、context packing、证据门槛、buffered grounded generation、引用落库/再鉴权、search-only、feedback 和 20 条合成评测。阶段证据包见 [S4 README](docs/enterprise-qa-system/s4/README.md)。
+S5 已在本地/合成范围完成服务端用户组、集中授权、group ACL、配置评测—独立审批—发布—不可变回滚、数据库共享配额、治理哈希链、安全事件和管理控制台。阶段证据包见 [S5 README](docs/enterprise-qa-system/s5/README.md)。
 
-只允许使用合成、公开或明确批准的非敏感资料。生产还要求企业 OIDC/group、ClamAV、批准的 S3/Chat/Embedding/Reranker、中文检索与 ANN benchmark、共享 Redis 协调、Kubernetes、性能和恢复证据。
+只允许使用合成、公开或明确批准的非敏感资料。生产仍要求企业 OIDC/SCIM、外部真实评测 Worker、WORM/SIEM、跨实例取消、ClamAV/真实 Provider、Kubernetes、性能、告警和恢复证据。S5 local passing 不是生产批准。

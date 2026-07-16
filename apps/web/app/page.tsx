@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
+import Link from "next/link";
 
 type Health = { status: string };
 type Identity = {
@@ -428,6 +429,9 @@ export default function Home() {
         {identity ? (
           <div className="session">
             <p>已登录：<strong>{identity.display_name}</strong> · {identity.tenant.code} · {identity.roles.join(", ")}</p>
+            {identity.permissions.includes("qa:admin:users:read") && (
+              <Link className="login" href="/admin">打开 S5 治理控制台</Link>
+            )}
 
             {identity.permissions.includes("qa:knowledge:write") && (
               <section className="panel">
