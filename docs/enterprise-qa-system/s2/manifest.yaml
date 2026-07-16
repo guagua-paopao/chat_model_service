@@ -1,0 +1,79 @@
+phase: S2
+name: model-gateway-and-streaming-chat
+version: s2-v1.0
+date: 2026-07-15
+status: conditional_go_s3_synthetic_development
+implemented:
+  api:
+    - GET /api/v1/models
+    - POST /api/v1/chat/completions
+    - POST /api/v1/messages/{message_id}/cancel
+    - POST /api/v1/messages/{message_id}/retry
+    - GET /api/v1/conversations/{conversation_id} includes messages
+  model_gateway:
+    - provider_neutral_adapter_protocol
+    - deterministic_fake_primary_and_backup
+    - openai_compatible_http_adapter
+    - timeout_retry_backoff_jitter
+    - route_concurrency_and_circuit_breaker
+    - no_failover_after_visible_delta
+    - normalized_safe_errors
+  streaming:
+    - named_sse_events
+    - monotonic_sequence
+    - fifteen_second_heartbeat
+    - active_cancellation
+    - disconnect_cleanup
+  persistence:
+    - message_streaming_fields
+    - model_invocations
+    - append_only_usage_ledger
+    - price_snapshot_and_estimated_usage
+  web:
+    - streaming_chat_ui
+    - stop_and_retry
+    - usage_display
+    - explicit_no_enterprise_knowledge_notice
+  infrastructure:
+    - compose_fake_model_configuration
+    - helm_provider_configuration
+    - kubernetes_secret_reference_for_model_key
+decisions:
+  log: decision-log.md
+  adrs: [ADR-014, ADR-015, ADR-016, ADR-017, ADR-018]
+verification:
+  automated_tests: 35
+  pytest_subtests: 13
+  coverage_percent: 89.76
+  ruff: passed
+  mypy_strict: passed
+  sqlite_migration_up_down_up: passed
+  postgresql_migration_version: 20260715_0002
+  openapi_contract: passed
+  next_lint_typecheck_build: passed
+  application_images_built: 4
+  compose_full_stack: passed
+  oidc_bff_sse_usage_smoke: passed
+  python_known_vulnerabilities: 0
+  npm_known_vulnerabilities: 0
+deferred_verification:
+  - approved_live_model_provider
+  - distributed_quota_and_cancellation
+  - target_load_and_sse_disconnect_storm
+  - helm_lint_and_kubernetes_install
+  - ingress_streaming_timeout_and_rollout
+  - production_metrics_alerts_and_runbooks
+blocked_for_real_data_or_production:
+  - s0_business_security_data_approvals
+  - enterprise_oidc
+  - approved_model_route_region_and_data_terms
+  - shared_redis_coordination
+  - secret_manager_tls_network_policy
+  - target_performance_and_recovery_evidence
+next_phase: S3
+next_phase_allowed_scope:
+  - synthetic_document_upload_and_object_storage
+  - immutable_document_versions
+  - parsing_chunking_and_async_jobs
+  - acl_metadata_and_atomic_index_publication
+  - fake_or_approved_embedding_adapter

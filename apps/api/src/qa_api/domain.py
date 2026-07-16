@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -31,6 +32,41 @@ class ConversationRecord:
     version: int
     created_at: datetime
     updated_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class MessageRecord:
+    id: UUID
+    tenant_id: UUID
+    conversation_id: UUID
+    role: str
+    content: str
+    content_format: str
+    status: str
+    sequence_no: int
+    parent_message_id: UUID | None
+    request_id: str | None
+    finish_reason: str | None
+    provider_code: str | None
+    model_code: str | None
+    route_code: str | None
+    input_tokens: int | None
+    output_tokens: int | None
+    cached_tokens: int | None
+    error_code: str | None
+    created_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None
+
+
+@dataclass(frozen=True, slots=True)
+class UsageRecord:
+    input_tokens: int
+    output_tokens: int
+    cached_tokens: int
+    estimated: bool
+    amount: Decimal
+    currency: str
 
 
 class ApiError(Exception):

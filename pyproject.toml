@@ -5,12 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "enterprise-qa-system"
 version = "0.1.0"
-description = "Enterprise multi-tenant QA system - S1 engineering skeleton"
+description = "Enterprise multi-tenant QA system - S2 model gateway and streaming chat"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "alembic==1.18.5",
   "email-validator>=2.1,<3",
   "fastapi==0.139.0",
+  "httpx==0.28.1",
   "psycopg[binary]>=3.2,<4",
   "pydantic==2.13.4",
   "PyJWT[crypto]==2.13.0",

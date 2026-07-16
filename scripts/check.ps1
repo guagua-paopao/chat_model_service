@@ -23,7 +23,7 @@ try {
     & $python -m alembic -c alembic.ini upgrade head
     & $python -m alembic -c alembic.ini downgrade base
     & $python -m alembic -c alembic.ini upgrade head
-    & $python -c "import yaml; p=yaml.safe_load(open('docs/enterprise-qa-system/openapi.yaml',encoding='utf-8')); assert p['openapi']=='3.1.0'; assert '/me' in p['paths']"
+    & $python -c "import yaml; p=yaml.safe_load(open('docs/enterprise-qa-system/openapi.yaml',encoding='utf-8')); assert p['openapi']=='3.1.0'; assert all(x in p['paths'] for x in ['/me','/models','/chat/completions','/messages/{message_id}/retry'])"
 
     Push-Location "apps\web"
     try {
@@ -60,7 +60,7 @@ try {
     if ($OnlineAudit) {
         & $python -m pip_audit -r requirements.lock
     }
-    Write-Host "S1 checks passed."
+    Write-Host "S2 checks passed."
 }
 finally {
     Pop-Location
