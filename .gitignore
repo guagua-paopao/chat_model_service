@@ -12,6 +12,7 @@ coverage.xml
 htmlcov/
 node_modules/
 .next/
+.next-*/
 dist/
 build/
 *.log

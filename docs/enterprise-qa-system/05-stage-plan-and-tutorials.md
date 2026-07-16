@@ -325,6 +325,8 @@ IAM 全部 M/S、ADM-001~007、UC-03/04，以及 [07](07-security-and-governance
 
 安全评审无未缓解 P0/P1；租户/ACL/密钥/日志测试通过；配置与知识发布有审批和回滚；审计/数据负责人签字。
 
+S5 已完成本地/合成工程候选，详细需求、字段、状态机、测试、ADR、风险和 Gate 见 [S5 证据包](s5/README.md)。实现包括服务端 user/role/group、集中 Policy、group ACL、配置 structural evaluate/独立 approve/publish/immutable rollback、数据库共享 quota lease、治理 hash chain、安全事件和只读控制台。由于真实企业 IdP/SCIM、批准评测 Worker/数据集、WORM/SIEM、目标红队/告警、跨实例取消、Kubernetes/性能/DR 和具名签字缺失，本节生产退出条件尚未满足；只条件允许 S6 继续合成或逐项批准的集成工作。
+
 ---
 
 ## S6. 质量、性能、可观测与容灾（W13–W14）

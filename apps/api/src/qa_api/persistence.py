@@ -84,6 +84,9 @@ class UserRow(Base):
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     status: Mapped[str] = mapped_column(String(24), default="active", nullable=False)
     locale: Mapped[str] = mapped_column(String(16), default="zh-CN", nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    identity_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
@@ -116,6 +119,43 @@ class UserRoleRow(Base):
     tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), primary_key=True)
     user_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
     role_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class GroupRow(Base):
+    __tablename__ = "groups"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "code"),
+        UniqueConstraint("tenant_id", "id"),
+        Index("groups_tenant_status_idx", "tenant_id", "status"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    code: Mapped[str] = mapped_column(String(128), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    external_id: Mapped[str | None] = mapped_column(String(255))
+    status: Mapped[str] = mapped_column(String(24), default="active", nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    identity_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class GroupMemberRow(Base):
+    __tablename__ = "group_members"
+    __table_args__ = (
+        ForeignKeyConstraint(["tenant_id", "group_id"], ["groups.tenant_id", "groups.id"]),
+        ForeignKeyConstraint(["tenant_id", "user_id"], ["users.tenant_id", "users.id"]),
+        Index("group_members_user_idx", "tenant_id", "user_id"),
+    )
+
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), primary_key=True)
+    group_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    user_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    source: Mapped[str] = mapped_column(String(32), default="directory", nullable=False)
     valid_from: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
@@ -330,6 +370,14 @@ class RagConfigRow(Base):
         UniqueConstraint("tenant_id", "code", "version"),
         UniqueConstraint("tenant_id", "id"),
         Index("rag_configs_published_idx", "tenant_id", "code", "status", "version"),
+        Index(
+            "rag_configs_one_published_uq",
+            "tenant_id",
+            "code",
+            unique=True,
+            sqlite_where=text("status = 'published'"),
+            postgresql_where=text("status = 'published'"),
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
@@ -341,9 +389,40 @@ class RagConfigRow(Base):
     prompt_template: Mapped[str] = mapped_column(Text, nullable=False)
     config_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluation_status: Mapped[str] = mapped_column(String(24), default="pending", nullable=False)
+    change_reason: Mapped[str] = mapped_column(String(500), default="baseline", nullable=False)
+    supersedes_id: Mapped[UUID | None] = mapped_column(Uuid)
+    rollback_of_id: Mapped[UUID | None] = mapped_column(Uuid)
     created_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    approved_by: Mapped[UUID | None] = mapped_column(Uuid)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approval_id: Mapped[str | None] = mapped_column(String(128))
+    published_by: Mapped[UUID | None] = mapped_column(Uuid)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class RagConfigEvaluationRow(Base):
+    __tablename__ = "rag_config_evaluations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        Index("rag_config_evaluations_config_idx", "tenant_id", "rag_config_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    rag_config_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("rag_configs.id"), nullable=False)
+    dataset_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    dataset_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    evaluator_version: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    gate_result: Mapped[str] = mapped_column(String(16), nullable=False)
+    metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    thresholds: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    failed_checks: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    created_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ConversationRow(Base):
@@ -568,6 +647,110 @@ class UsageLedgerRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
+class QuotaPolicyRow(Base):
+    __tablename__ = "quota_policies"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "scope_type", "scope_id"),
+        UniqueConstraint("tenant_id", "id"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    scope_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    scope_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    requests_per_minute: Mapped[int] = mapped_column(Integer, nullable=False)
+    concurrent_requests: Mapped[int] = mapped_column(Integer, nullable=False)
+    daily_token_limit: Mapped[int] = mapped_column(Integer, nullable=False)
+    monthly_cost_limit: Mapped[Decimal] = mapped_column(Numeric(18, 8), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    updated_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class QuotaWindowRow(Base):
+    __tablename__ = "quota_windows"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "window_kind", "window_start"),
+        Index("quota_windows_expiry_idx", "window_kind", "window_start"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    window_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    window_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    request_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    input_tokens_reserved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class QuotaLeaseRow(Base):
+    __tablename__ = "quota_leases"
+    __table_args__ = (
+        Index("quota_leases_tenant_expiry_idx", "tenant_id", "expires_at"),
+        Index("quota_leases_user_expiry_idx", "tenant_id", "user_id", "expires_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    user_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    input_tokens_reserved: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    acquired_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class GovernanceAuditRow(Base):
+    __tablename__ = "governance_audit_logs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "sequence_no"),
+        Index("governance_audit_time_idx", "tenant_id", "occurred_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    actor_user_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    action: Mapped[str] = mapped_column(String(128), nullable=False)
+    resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    resource_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    result: Mapped[str] = mapped_column(String(16), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    approval_id: Mapped[str | None] = mapped_column(String(128))
+    request_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    trace_id: Mapped[str | None] = mapped_column(String(64))
+    details_safe: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class SecurityIncidentRow(Base):
+    __tablename__ = "security_incidents"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        Index("security_incidents_status_idx", "tenant_id", "status", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    severity: Mapped[str] = mapped_column(String(8), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    evidence_refs: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    owner_user_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    resolution_safe: Mapped[str | None] = mapped_column(String(1000))
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    created_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AuditLogRow(Base):
     __tablename__ = "audit_logs"
 
@@ -616,7 +799,7 @@ class Database:
         if self.settings.auto_create_schema:
             Base.metadata.create_all(self.engine)
         if self.settings.seed_demo_data:
-            seed_demo_data(self.session_factory(), self.settings.oidc_issuer)
+            seed_demo_data(self.session_factory(), self.settings.oidc_issuer, self.settings)
 
     def ready(self) -> bool:
         with self.session_factory() as session:
@@ -631,15 +814,25 @@ DEMO_TENANT_ID = UUID("00000000-0000-7000-8000-000000000001")
 OTHER_TENANT_ID = UUID("00000000-0000-7000-8000-000000000002")
 DEMO_USER_ID = UUID("00000000-0000-7000-8000-000000000101")
 DISABLED_USER_ID = UUID("00000000-0000-7000-8000-000000000102")
+CONFIG_APPROVER_USER_ID = UUID("00000000-0000-7000-8000-000000000103")
+AUDITOR_USER_ID = UUID("00000000-0000-7000-8000-000000000104")
+GOVERNANCE_ADMIN_USER_ID = UUID("00000000-0000-7000-8000-000000000105")
 OTHER_USER_ID = UUID("00000000-0000-7000-8000-000000000201")
 DEMO_ROLE_ID = UUID("00000000-0000-7000-8000-000000001001")
 OTHER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001002")
 DEMO_KNOWLEDGE_ROLE_ID = UUID("00000000-0000-7000-8000-000000001003")
+DEMO_GOVERNANCE_ROLE_ID = UUID("00000000-0000-7000-8000-000000001004")
+CONFIG_APPROVER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001005")
+AUDITOR_ROLE_ID = UUID("00000000-0000-7000-8000-000000001006")
+DEMO_GROUP_ID = UUID("00000000-0000-7000-8000-000000002001")
+DEMO_QUOTA_POLICY_ID = UUID("00000000-0000-7000-8000-000000003001")
 
 
-def seed_demo_data(session: Session, issuer: str) -> None:
+def seed_demo_data(session: Session, issuer: str, settings: Settings) -> None:
     if session.scalar(select(TenantRow.id).where(TenantRow.id == DEMO_TENANT_ID)):
+        _sync_demo_issuers(session, issuer)
         _ensure_demo_knowledge_role(session)
+        _ensure_s5_governance_seed(session, issuer, settings)
         session.commit()
         return
     session.add_all(
@@ -737,6 +930,8 @@ def seed_demo_data(session: Session, issuer: str) -> None:
         ]
     )
     session.commit()
+    _ensure_s5_governance_seed(session, issuer, settings)
+    session.commit()
 
 
 def _ensure_demo_knowledge_role(session: Session) -> None:
@@ -779,3 +974,158 @@ def _ensure_demo_knowledge_role(session: Session) -> None:
             )
         )
     session.commit()
+
+
+def _sync_demo_issuers(session: Session, issuer: str) -> None:
+    demo_ids = (
+        DEMO_USER_ID,
+        DISABLED_USER_ID,
+        CONFIG_APPROVER_USER_ID,
+        AUDITOR_USER_ID,
+        GOVERNANCE_ADMIN_USER_ID,
+        OTHER_USER_ID,
+    )
+    for user in session.scalars(select(UserRow).where(UserRow.id.in_(demo_ids))):
+        user.auth_issuer = issuer
+        user.updated_at = utc_now()
+    session.flush()
+
+
+def _ensure_s5_governance_seed(session: Session, issuer: str, settings: Settings) -> None:
+    """Create deterministic local-only personas for governance workflow exercises."""
+    users = (
+        (
+            GOVERNANCE_ADMIN_USER_ID,
+            "governance-admin",
+            "governance.admin@example.invalid",
+            "Governance Administrator",
+        ),
+        (
+            CONFIG_APPROVER_USER_ID,
+            "config-approver",
+            "config.approver@example.invalid",
+            "Configuration Approver",
+        ),
+        (AUDITOR_USER_ID, "demo-auditor", "auditor@example.invalid", "Governance Auditor"),
+    )
+    for user_id, subject, email, display_name in users:
+        if session.get(UserRow, user_id) is None:
+            session.add(
+                UserRow(
+                    id=user_id,
+                    tenant_id=DEMO_TENANT_ID,
+                    auth_issuer=issuer,
+                    auth_subject=subject,
+                    email=email,
+                    display_name=display_name,
+                    status="active",
+                    identity_synced_at=utc_now(),
+                )
+            )
+
+    roles = (
+        (
+            DEMO_GOVERNANCE_ROLE_ID,
+            "governance_admin",
+            "Governance administrator",
+            [
+                "qa:admin:users:read",
+                "qa:admin:users:write",
+                "qa:admin:groups:read",
+                "qa:admin:groups:write",
+                "qa:rag-config:read",
+                "qa:rag-config:write",
+                "qa:rag-config:evaluate",
+                "qa:rag-config:publish",
+                "qa:rag-config:rollback",
+                "qa:quota:read",
+                "qa:quota:write",
+                "qa:usage:read",
+                "qa:audit:read",
+                "qa:audit:verify",
+                "qa:security-incident:read",
+                "qa:security-incident:write",
+            ],
+        ),
+        (
+            CONFIG_APPROVER_ROLE_ID,
+            "config_approver",
+            "Independent configuration approver",
+            ["qa:rag-config:read", "qa:rag-config:approve"],
+        ),
+        (
+            AUDITOR_ROLE_ID,
+            "auditor",
+            "Read-only governance auditor",
+            [
+                "qa:audit:read",
+                "qa:audit:verify",
+                "qa:usage:read",
+                "qa:security-incident:read",
+            ],
+        ),
+    )
+    for role_id, code, name, permissions in roles:
+        if session.get(RoleRow, role_id) is None:
+            session.add(
+                RoleRow(
+                    id=role_id,
+                    tenant_id=DEMO_TENANT_ID,
+                    code=code,
+                    name=name,
+                    permissions=permissions,
+                    is_system=True,
+                )
+            )
+    session.flush()
+
+    memberships = (
+        (GOVERNANCE_ADMIN_USER_ID, DEMO_GOVERNANCE_ROLE_ID),
+        (CONFIG_APPROVER_USER_ID, CONFIG_APPROVER_ROLE_ID),
+        (AUDITOR_USER_ID, AUDITOR_ROLE_ID),
+    )
+    for user_id, role_id in memberships:
+        key = {"tenant_id": DEMO_TENANT_ID, "user_id": user_id, "role_id": role_id}
+        if session.get(UserRoleRow, key) is None:
+            session.add(UserRoleRow(**key))
+
+    if session.get(GroupRow, DEMO_GROUP_ID) is None:
+        session.add(
+            GroupRow(
+                id=DEMO_GROUP_ID,
+                tenant_id=DEMO_TENANT_ID,
+                code="all-employees",
+                display_name="All employees",
+                external_id="directory-group-all-employees",
+                status="active",
+                identity_synced_at=utc_now(),
+            )
+        )
+        session.flush()
+    for user_id in (
+        DEMO_USER_ID,
+        GOVERNANCE_ADMIN_USER_ID,
+        CONFIG_APPROVER_USER_ID,
+        AUDITOR_USER_ID,
+    ):
+        key = {"tenant_id": DEMO_TENANT_ID, "group_id": DEMO_GROUP_ID, "user_id": user_id}
+        if session.get(GroupMemberRow, key) is None:
+            session.add(GroupMemberRow(**key))
+
+    if session.get(QuotaPolicyRow, DEMO_QUOTA_POLICY_ID) is None:
+        session.add(
+            QuotaPolicyRow(
+                id=DEMO_QUOTA_POLICY_ID,
+                tenant_id=DEMO_TENANT_ID,
+                scope_type="tenant",
+                scope_id=str(DEMO_TENANT_ID),
+                requests_per_minute=settings.chat_requests_per_minute,
+                concurrent_requests=settings.chat_tenant_concurrency,
+                daily_token_limit=250_000,
+                monthly_cost_limit=Decimal("100.00000000"),
+                currency="USD",
+                enabled=True,
+                created_by=DEMO_USER_ID,
+                updated_by=DEMO_USER_ID,
+            )
+        )

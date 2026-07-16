@@ -548,8 +548,14 @@ class RagService:
             checksum=hashlib.sha256(
                 f"{PROMPT_VERSION}:{GROUNDED_PROMPT_TEMPLATE}:{material}".encode()
             ).hexdigest(),
+            evaluation_status="passed",
+            change_reason="S4 compatibility baseline bootstrap.",
             created_by=principal.user_id,
             created_at=utc_now(),
+            approved_by=principal.user_id,
+            approved_at=utc_now(),
+            approval_id="bootstrap-s4-baseline",
+            published_by=principal.user_id,
             published_at=utc_now(),
         )
         session.add(row)
@@ -697,6 +703,12 @@ class RagService:
                 DocumentAclRow.subject_type == "role",
                 DocumentAclRow.subject_id.in_(principal.roles),
             )
+        group_clause: Any = false()
+        if principal.groups:
+            group_clause = and_(
+                DocumentAclRow.subject_type == "group",
+                DocumentAclRow.subject_id.in_(principal.groups),
+            )
         acl = exists(
             select(DocumentAclRow.id).where(
                 DocumentAclRow.tenant_id == principal.tenant_id,
@@ -708,6 +720,7 @@ class RagService:
                         DocumentAclRow.subject_id == str(principal.user_id),
                     ),
                     role_clause,
+                    group_clause,
                 ),
             )
         )
@@ -885,6 +898,12 @@ class RagService:
                 DocumentAclRow.subject_type == "role",
                 DocumentAclRow.subject_id.in_(principal.roles),
             )
+        group_clause: Any = false()
+        if principal.groups:
+            group_clause = and_(
+                DocumentAclRow.subject_type == "group",
+                DocumentAclRow.subject_id.in_(principal.groups),
+            )
         acl = exists(
             select(DocumentAclRow.id).where(
                 DocumentAclRow.tenant_id == principal.tenant_id,
@@ -896,6 +915,7 @@ class RagService:
                         DocumentAclRow.subject_id == str(principal.user_id),
                     ),
                     role_clause,
+                    group_clause,
                 ),
             )
         )
@@ -935,7 +955,11 @@ class RagService:
     @staticmethod
     def _acl_fingerprint(principal: Principal) -> str:
         material = json.dumps(
-            {"user_id": str(principal.user_id), "roles": sorted(principal.roles)},
+            {
+                "user_id": str(principal.user_id),
+                "roles": sorted(principal.roles),
+                "groups": sorted(principal.groups),
+            },
             sort_keys=True,
             separators=(",", ":"),
         )

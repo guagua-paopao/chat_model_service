@@ -1,9 +1,9 @@
 # Project Context
 
-> 状态：S4 可溯源 RAG、引用与拒答纵切完成，生产条件待关闭  
-> 基线版本：s4-v1.0  
+> 状态：S5 企业治理闭环本地候选完成，生产条件待关闭  
+> 基线版本：s5-v1.0-local-candidate  
 > 基线日期：2026-07-16  
-> 下一阶段：S5 质量评测、可观测性与配置治理（仅合成/批准非敏感数据）
+> 下一阶段：S6 生产化证据与真实企业集成（仍须逐项批准数据/环境）
 
 ## 1. 当前目标
 
@@ -23,7 +23,7 @@
 | 项目范围与首发场景 | 工程基线已确定，待业务 Owner 签字 | `docs/enterprise-qa-system/s0/01-discovery-baseline.md` |
 | 数据清单与分级策略 | 合成基线完成，真实数据盘点待输入 | `s0/02-data-inventory.md` |
 | 黄金评测集 | 60 条合成样例完成，待业务双人复核 | `tests/evaluation/s0-golden-dataset.jsonl` |
-| 架构与 ADR | ADR-001～032 已接受为开发基线 | `docs/enterprise-qa-system/adr/` |
+| 架构与 ADR | ADR-001～037 已接受为开发基线 | `docs/enterprise-qa-system/adr/` |
 | 威胁模型 | v0.1 完成，开发阶段持续更新 | `s0/05-threat-model.md` |
 | 容量与成本 | 三档容量模型完成，真实价格/流量待确认 | `s0/06-capacity-and-cost-baseline.md` |
 | 裸模型/RAG 基线实验 | 实验协议与记录模板完成，尚未运行真实模型 | `s0/04-baseline-experiment.md` |
@@ -41,6 +41,9 @@
 | S4 RAG 闭环 | ACL-first hybrid/RRF/rerank、packing、grounded/search-only、拒答、引用再鉴权、反馈已实现 | `s4/README.md` |
 | S4 质量与全栈 | 58 tests；20-case 合成指标均 1.0、泄漏 0；PostgreSQL pgvector/Compose smoke 通过 | `s4/05-test-and-verification-report.md` |
 | S4 Gate | 条件通过 S5 合成质量/可观测性开发；真实数据/Provider/中文/性能/K8s/DR 仍阻断生产 | `s4/07-s4-gate-review.md` |
+| S5 企业治理闭环 | 服务端目录态/group ACL、集中授权、配置门禁、DB 共享配额、哈希链、事件和控制台已实现 | `s5/README.md` |
+| S5 质量与验证 | Python/契约/迁移/Web 证据见报告；本地 structural evaluator 不代表真实业务质量 | `s5/07-test-and-verification-report.md` |
+| S5 Gate | 只条件通过 S6 合成/批准集成工作；生产仍 No-Go | `s5/08-s5-gate-review.md` |
 
 ## 3. 已接受技术基线
 
@@ -101,18 +104,26 @@
 - 真实黄金集的双人业务复核和基线实验结果。
 - GitHub 主干到 dev 的真实部署环境、凭据、回滚和 smoke 证据。
 - Helm lint、Kubernetes dev 安装、Secret/TLS/NetworkPolicy 与恢复演练。
-- 多副本共享配额、并发租约与取消信号（当前仅进程内状态）。
+- 跨实例取消信号仍是进程内；速率/并发配额已改为数据库共享窗口和 TTL 租约，但待 PostgreSQL 压测。
 - 目标环境 SSE 长连接、断线风暴、TTFT/完整耗时和 Provider 故障压测。
 
 完整清单见 `docs/enterprise-qa-system/s0/08-open-questions.md`。
 
 ## 8. 下一步
 
-1. 进入 S5 合成开发：扩充多语言/攻击/冲突黄金集，建立 claim-level evaluator、RAG 可观测性、配置审批/灰度/回滚。
-2. Platform/API 完成 Redis 共享配额、并发租约和取消协调；在此之前禁止多副本生产。
+1. 进入 S6 前先接入批准的真实评测 Worker/黄金集/holdout/红队，不得复用 local structural passing 作为生产证据。
+2. Platform/API 完成跨实例取消协调，并对数据库共享配额做 PostgreSQL 锁/故障/容量测试；在此之前禁止多副本生产。
 3. 由用户/业务方回答 S0 开放问题；仅在批准后使用真实模型沙箱和非敏感资料运行基线实验。
 4. Platform/IAM 并行补齐企业 OIDC、GitHub dev 自动部署、Helm/Kubernetes、Ingress SSE 和负载验证。
-5. S5 变更必须引用 ADR、OpenAPI、本文件约束和 `s4/07-s4-gate-review.md` 的禁止事项；不得把 S4 合成满分解释为真实业务质量。
+5. S6 变更必须引用 ADR、OpenAPI、本文件约束和 `s5/08-s5-gate-review.md`；任何真实数据、外部 Provider、IAM/SIEM 或部署写入需单独批准。
+
+## 12. S5 当前基线（覆盖文首旧阶段状态）
+
+- 当前版本：`s5-v1.0-local-candidate`，日期 2026-07-16；证据包：`docs/enterprise-qa-system/s5/`。
+- 已完成：服务端 user/role/group 解析、集中 PolicyEngine、group ACL-first、用户立即停权、配置 draft/evaluate/独立 approve/publish/immutable rollback、数据库共享 quota window/lease、治理 hash chain、安全事件状态机、用量/质量摘要、Web `/admin`、0005/0006 migrations 和 S5 smoke。
+- ADR 基线：ADR-001 至 ADR-037；S5 新增 ADR-033 至 ADR-037。
+- 关键限制：local evaluator 仅结构/安全预检且在 staging/production 被禁止；哈希链未外送 WORM；真实企业 IdP/SCIM 和签字缺失；取消仍进程内；无目标 Prometheus/告警/K8s/性能/DR 证据。
+- Gate：只授权 S6 在合成、公开或逐项批准范围补生产化证据；S5 完整公开发布仍需用户另行明确确认。
 
 ## 11. S4 当前基线（覆盖文首旧阶段状态）
 

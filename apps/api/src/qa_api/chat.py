@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import asyncio
 import json
-import time
-from collections import defaultdict, deque
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -32,6 +30,10 @@ from qa_api.persistence import (
     ConversationRow,
     MessageRow,
     ModelInvocationRow,
+    QuotaLeaseRow,
+    QuotaPolicyRow,
+    QuotaWindowRow,
+    TenantRow,
     UsageLedgerRow,
     utc_now,
 )
@@ -40,27 +42,26 @@ from qa_api.rag import CitationView, RagService, RetrievalResult
 
 @dataclass(slots=True)
 class QuotaLease:
-    tenant_semaphore: asyncio.Semaphore
-    user_semaphore: asyncio.Semaphore
+    lease_id: UUID
+    session_factory: sessionmaker[Session]
     released: bool = False
 
     def release(self) -> None:
         if self.released:
             return
-        self.user_semaphore.release()
-        self.tenant_semaphore.release()
+        with self.session_factory() as session:
+            session.execute(delete(QuotaLeaseRow).where(QuotaLeaseRow.id == self.lease_id))
+            session.commit()
         self.released = True
 
 
 class QuotaManager:
-    """Single-process S2/S3 guard; production replaces counters with Redis atomics."""
+    """Database-serialized, cross-instance quota and concurrency coordinator."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, session_factory: sessionmaker[Session]) -> None:
         self._settings = settings
+        self._session_factory = session_factory
         self._lock = asyncio.Lock()
-        self._requests: dict[tuple[UUID, UUID], deque[float]] = defaultdict(deque)
-        self._tenant_slots: dict[UUID, asyncio.Semaphore] = {}
-        self._user_slots: dict[tuple[UUID, UUID], asyncio.Semaphore] = {}
 
     async def acquire(self, *, tenant_id: UUID, user_id: UUID, prompt: str) -> QuotaLease:
         estimated = estimate_tokens(prompt)
@@ -71,49 +72,198 @@ class QuotaManager:
                 "Input too large",
                 "The message exceeds the configured input token budget.",
             )
-        now = time.monotonic()
+        now = datetime.now(UTC)
         async with self._lock:
-            key = (tenant_id, user_id)
-            window = self._requests[key]
-            while window and now - window[0] >= 60:
-                window.popleft()
-            if len(window) >= self._settings.chat_requests_per_minute:
-                raise ApiError(
-                    429,
-                    "CHAT_RATE_LIMITED",
-                    "Too many requests",
-                    "The chat request rate limit was exceeded.",
-                    retryable=True,
+            with self._session_factory() as session:
+                session.execute(
+                    select(TenantRow.id).where(TenantRow.id == tenant_id).with_for_update()
                 )
-            window.append(now)
-            tenant_slot = self._tenant_slots.setdefault(
-                tenant_id, asyncio.Semaphore(self._settings.chat_tenant_concurrency)
+                policy = self._policy(session, tenant_id=tenant_id, user_id=user_id)
+                if not policy["enabled"]:
+                    raise ApiError(
+                        403,
+                        "CHAT_QUOTA_DISABLED",
+                        "Access denied",
+                        "Chat is disabled by the active quota policy.",
+                    )
+                session.execute(delete(QuotaLeaseRow).where(QuotaLeaseRow.expires_at <= now))
+                tenant_active = int(
+                    session.scalar(
+                        select(func.count()).where(
+                            QuotaLeaseRow.tenant_id == tenant_id,
+                            QuotaLeaseRow.expires_at > now,
+                        )
+                    )
+                    or 0
+                )
+                user_active = int(
+                    session.scalar(
+                        select(func.count()).where(
+                            QuotaLeaseRow.tenant_id == tenant_id,
+                            QuotaLeaseRow.user_id == user_id,
+                            QuotaLeaseRow.expires_at > now,
+                        )
+                    )
+                    or 0
+                )
+                if tenant_active >= int(policy["concurrent_requests"]):
+                    raise ApiError(
+                        429,
+                        "TENANT_CONCURRENCY_EXCEEDED",
+                        "Too many requests",
+                        "The tenant chat concurrency limit was exceeded.",
+                        retryable=True,
+                    )
+                if user_active >= self._settings.chat_user_concurrency:
+                    raise ApiError(
+                        429,
+                        "USER_CONCURRENCY_EXCEEDED",
+                        "Too many requests",
+                        "The user chat concurrency limit was exceeded.",
+                        retryable=True,
+                    )
+                minute = now.replace(second=0, microsecond=0)
+                window = session.scalar(
+                    select(QuotaWindowRow)
+                    .where(
+                        QuotaWindowRow.tenant_id == tenant_id,
+                        QuotaWindowRow.user_id == user_id,
+                        QuotaWindowRow.window_kind == "minute",
+                        QuotaWindowRow.window_start == minute,
+                    )
+                    .with_for_update()
+                )
+                request_count = window.request_count if window else 0
+                if request_count >= int(policy["requests_per_minute"]):
+                    raise ApiError(
+                        429,
+                        "CHAT_RATE_LIMITED",
+                        "Too many requests",
+                        "The chat request rate limit was exceeded.",
+                        retryable=True,
+                    )
+                day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                month_start = day_start.replace(day=1)
+                consumed_tokens = int(
+                    session.scalar(
+                        select(
+                            func.coalesce(
+                                func.sum(
+                                    UsageLedgerRow.input_tokens + UsageLedgerRow.output_tokens
+                                ),
+                                0,
+                            )
+                        ).where(
+                            UsageLedgerRow.tenant_id == tenant_id,
+                            UsageLedgerRow.created_at >= day_start,
+                        )
+                    )
+                    or 0
+                )
+                active_reserved_tokens = int(
+                    session.scalar(
+                        select(func.coalesce(func.sum(QuotaLeaseRow.input_tokens_reserved), 0))
+                        .where(
+                            QuotaLeaseRow.tenant_id == tenant_id,
+                            QuotaLeaseRow.expires_at > now,
+                        )
+                    )
+                    or 0
+                )
+                monthly_cost = Decimal(
+                    session.scalar(
+                        select(func.coalesce(func.sum(UsageLedgerRow.amount), 0)).where(
+                            UsageLedgerRow.tenant_id == tenant_id,
+                            UsageLedgerRow.created_at >= month_start,
+                        )
+                    )
+                    or 0
+                )
+                if (
+                    consumed_tokens + active_reserved_tokens + estimated
+                    > int(policy["daily_token_limit"])
+                ):
+                    raise ApiError(
+                        429,
+                        "DAILY_TOKEN_QUOTA_EXCEEDED",
+                        "Quota exceeded",
+                        "The tenant daily token quota was exceeded.",
+                        retryable=False,
+                    )
+                if monthly_cost >= Decimal(policy["monthly_cost_limit"]):
+                    raise ApiError(
+                        429,
+                        "MONTHLY_COST_QUOTA_EXCEEDED",
+                        "Quota exceeded",
+                        "The tenant monthly cost quota was exceeded.",
+                        retryable=False,
+                    )
+                if window is None:
+                    window = QuotaWindowRow(
+                        id=uuid7(),
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        window_kind="minute",
+                        window_start=minute,
+                        request_count=0,
+                        input_tokens_reserved=0,
+                        updated_at=now,
+                    )
+                    session.add(window)
+                window.request_count += 1
+                window.input_tokens_reserved += estimated
+                window.updated_at = now
+                lease_id = uuid7()
+                session.add(
+                    QuotaLeaseRow(
+                        id=lease_id,
+                        tenant_id=tenant_id,
+                        user_id=user_id,
+                        input_tokens_reserved=estimated,
+                        acquired_at=now,
+                        expires_at=now
+                        + timedelta(seconds=int(self._settings.model_total_timeout_seconds) + 30),
+                    )
+                )
+                session.commit()
+        return QuotaLease(lease_id=lease_id, session_factory=self._session_factory)
+
+    def _policy(self, session: Session, *, tenant_id: UUID, user_id: UUID) -> dict[str, Any]:
+        rows = list(
+            session.scalars(
+                select(QuotaPolicyRow)
+                .where(
+                    QuotaPolicyRow.tenant_id == tenant_id,
+                    or_(
+                        and_(
+                            QuotaPolicyRow.scope_type == "user",
+                            QuotaPolicyRow.scope_id == str(user_id),
+                        ),
+                        and_(
+                            QuotaPolicyRow.scope_type == "tenant",
+                            QuotaPolicyRow.scope_id == str(tenant_id),
+                        ),
+                    ),
+                )
+                .order_by(QuotaPolicyRow.scope_type.desc())
             )
-            user_slot = self._user_slots.setdefault(
-                key, asyncio.Semaphore(self._settings.chat_user_concurrency)
-            )
-        try:
-            await asyncio.wait_for(tenant_slot.acquire(), timeout=0.05)
-        except TimeoutError as exc:
-            raise ApiError(
-                429,
-                "TENANT_CONCURRENCY_EXCEEDED",
-                "Too many requests",
-                "The tenant chat concurrency limit was exceeded.",
-                retryable=True,
-            ) from exc
-        try:
-            await asyncio.wait_for(user_slot.acquire(), timeout=0.05)
-        except TimeoutError as exc:
-            tenant_slot.release()
-            raise ApiError(
-                429,
-                "USER_CONCURRENCY_EXCEEDED",
-                "Too many requests",
-                "The user chat concurrency limit was exceeded.",
-                retryable=True,
-            ) from exc
-        return QuotaLease(tenant_slot, user_slot)
+        )
+        if rows:
+            row = rows[0]
+            return {
+                "requests_per_minute": row.requests_per_minute,
+                "concurrent_requests": row.concurrent_requests,
+                "daily_token_limit": row.daily_token_limit,
+                "monthly_cost_limit": row.monthly_cost_limit,
+                "enabled": row.enabled,
+            }
+        return {
+            "requests_per_minute": self._settings.chat_requests_per_minute,
+            "concurrent_requests": self._settings.chat_tenant_concurrency,
+            "daily_token_limit": 250_000,
+            "monthly_cost_limit": Decimal("100.00000000"),
+            "enabled": True,
+        }
 
 
 class CancellationRegistry:

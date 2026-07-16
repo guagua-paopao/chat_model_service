@@ -16,6 +16,7 @@ class Principal:
     display_name: str
     locale: str
     roles: tuple[str, ...]
+    groups: tuple[str, ...]
     permissions: tuple[str, ...]
 
 
