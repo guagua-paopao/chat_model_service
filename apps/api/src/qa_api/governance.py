@@ -664,9 +664,7 @@ class GovernanceService:
         runs = int(session.scalar(select(func.count()).where(*run_filter)) or 0)
         abstentions = int(
             session.scalar(
-                select(func.count()).where(
-                    *run_filter, RetrievalRunRow.status == "abstained"
-                )
+                select(func.count()).where(*run_filter, RetrievalRunRow.status == "abstained")
             )
             or 0
         )
@@ -911,9 +909,7 @@ class GovernanceService:
         details: dict[str, Any],
     ) -> GovernanceAuditRow:
         session.execute(
-            select(TenantRow.id)
-            .where(TenantRow.id == principal.tenant_id)
-            .with_for_update()
+            select(TenantRow.id).where(TenantRow.id == principal.tenant_id).with_for_update()
         )
         previous = session.scalar(
             select(GovernanceAuditRow)
@@ -1013,9 +1009,7 @@ class GovernanceService:
 
     @staticmethod
     def _lock_tenant(session: Session, tenant_id: UUID) -> None:
-        session.scalar(
-            select(TenantRow.id).where(TenantRow.id == tenant_id).with_for_update()
-        )
+        session.scalar(select(TenantRow.id).where(TenantRow.id == tenant_id).with_for_update())
 
     def _baseline_config(self) -> dict[str, Any]:
         return {
@@ -1087,9 +1081,7 @@ class GovernanceService:
                     "rerank_weight",
                 )
             )
-            and abs(
-                float(config["vector_weight"]) + float(config["lexical_weight"]) - 1.0
-            )
+            and abs(float(config["vector_weight"]) + float(config["lexical_weight"]) - 1.0)
             < 0.000001
         )
         if not bounds_valid:
@@ -1100,13 +1092,9 @@ class GovernanceService:
                 "Configuration violates reviewed safety or capacity bounds.",
             )
         if len(prompt_template) > 20_000:
-            raise ApiError(
-                422, "PROMPT_TOO_LARGE", "Invalid configuration", "Prompt is too large."
-            )
+            raise ApiError(422, "PROMPT_TOO_LARGE", "Invalid configuration", "Prompt is too large.")
 
-    def _evaluation_failures(
-        self, config: dict[str, Any], prompt_template: str
-    ) -> list[str]:
+    def _evaluation_failures(self, config: dict[str, Any], prompt_template: str) -> list[str]:
         failures: list[str] = []
         try:
             self._validate_config(config, prompt_template)
@@ -1130,9 +1118,7 @@ class GovernanceService:
         return sorted(set(failures))
 
     @staticmethod
-    def _config_material(
-        prompt_version: str, prompt_template: str, config: dict[str, Any]
-    ) -> str:
+    def _config_material(prompt_version: str, prompt_template: str, config: dict[str, Any]) -> str:
         return f"{prompt_version}:{prompt_template}:" + json.dumps(
             config, sort_keys=True, separators=(",", ":")
         )

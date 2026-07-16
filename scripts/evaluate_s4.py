@@ -181,8 +181,7 @@ def evaluate() -> tuple[dict[str, float | int], list[dict[str, Any]]]:
                         and case.get("expected_term", "").lower() in message["content"].lower(),
                         "unauthorized_leak": forbidden_term.lower() in message["content"].lower()
                         or any(
-                            forbidden_term.lower() in item["quote"].lower()
-                            for item in citations
+                            forbidden_term.lower() in item["quote"].lower() for item in citations
                         ),
                     }
                 )

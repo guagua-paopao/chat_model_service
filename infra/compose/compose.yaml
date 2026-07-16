@@ -119,10 +119,11 @@ services:
       QA_RERANKER_TIMEOUT_SECONDS: "20"
       QA_LOCAL_GOVERNANCE_EVALUATOR_ENABLED: "true"
       QA_LOCAL_QUALITY_EVALUATOR_ENABLED: "true"
+      QA_LOCAL_RELEASE_ORCHESTRATOR_ENABLED: "true"
       QA_TELEMETRY_EXPORT_ENABLED: "true"
       QA_OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
       QA_OTEL_SERVICE_NAME: enterprise-qa-api
-      QA_RELEASE_REVISION: s6-local-compose
+      QA_RELEASE_REVISION: s7-local-compose
     depends_on:
       postgres:
         condition: service_healthy

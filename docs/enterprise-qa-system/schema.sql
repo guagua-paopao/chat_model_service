@@ -729,3 +729,83 @@ CREATE INDEX evaluation_runs_tenant_created_idx
     ON evaluation_runs (tenant_id, created_at DESC);
 CREATE INDEX evaluation_runs_tenant_gate_idx
     ON evaluation_runs (tenant_id, gate_result, created_at DESC);
+
+-- S7 immutable release artifact, UAT/signoff evidence and append-only rollout ledger.
+CREATE TABLE release_candidates (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    release_version varchar(128) NOT NULL,
+    git_sha char(40) NOT NULL,
+    image_digest varchar(71) NOT NULL,
+    sbom_digest varchar(71) NOT NULL,
+    db_migration varchar(64) NOT NULL,
+    prompt_versions jsonb NOT NULL,
+    retrieval_versions jsonb NOT NULL,
+    model_route_versions jsonb NOT NULL,
+    dataset_version varchar(128) NOT NULL,
+    eval_run_id uuid NOT NULL REFERENCES evaluation_runs(id),
+    rollback_target varchar(128) NOT NULL,
+    known_issues jsonb NOT NULL DEFAULT '[]'::jsonb,
+    artifact_manifest jsonb NOT NULL,
+    artifact_checksum char(64) NOT NULL,
+    status varchar(24) NOT NULL CHECK (status IN ('draft','qualified','approved','rolling_out','stopped','rejected','completed','rolled_back')),
+    current_stage varchar(24) NOT NULL CHECK (current_stage IN ('none','dark','percent_5','percent_25','percent_50','percent_100','rolled_back')),
+    created_by uuid NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now(),
+    qualified_at timestamptz,
+    approved_at timestamptz,
+    completed_at timestamptz,
+    UNIQUE (tenant_id, id),
+    UNIQUE (tenant_id, release_version)
+);
+
+CREATE TABLE release_uat_results (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    release_id uuid NOT NULL REFERENCES release_candidates(id),
+    case_id varchar(16) NOT NULL CHECK (case_id IN ('UC-01','UC-02','UC-03','UC-04','UC-05')),
+    result varchar(16) NOT NULL CHECK (result IN ('passed','failed')),
+    evidence_ref varchar(256) NOT NULL,
+    notes_safe varchar(500),
+    executed_by uuid NOT NULL,
+    executed_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, id),
+    UNIQUE (tenant_id, release_id, case_id)
+);
+
+CREATE TABLE release_signoffs (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    release_id uuid NOT NULL REFERENCES release_candidates(id),
+    category varchar(24) NOT NULL CHECK (category IN ('product','business','data','security','sre')),
+    decision varchar(16) NOT NULL CHECK (decision IN ('approved','rejected')),
+    approval_id varchar(128) NOT NULL,
+    evidence_ref varchar(256) NOT NULL,
+    reason varchar(500) NOT NULL,
+    signed_by uuid NOT NULL,
+    signed_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, id),
+    UNIQUE (tenant_id, release_id, category),
+    UNIQUE (tenant_id, release_id, signed_by)
+);
+
+CREATE TABLE release_rollout_events (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id uuid NOT NULL REFERENCES tenants(id),
+    release_id uuid NOT NULL REFERENCES release_candidates(id),
+    sequence_no integer NOT NULL,
+    action varchar(32) NOT NULL,
+    from_stage varchar(24) NOT NULL,
+    to_stage varchar(24) NOT NULL,
+    decision varchar(16) NOT NULL CHECK (decision IN ('passed','failed')),
+    observation jsonb NOT NULL DEFAULT '{}'::jsonb,
+    reason varchar(500) NOT NULL,
+    actor_user_id uuid NOT NULL,
+    previous_hash char(64) NOT NULL,
+    event_hash char(64) NOT NULL,
+    occurred_at timestamptz NOT NULL DEFAULT now(),
+    UNIQUE (tenant_id, id),
+    UNIQUE (tenant_id, release_id, sequence_no)
+);
+CREATE INDEX release_candidates_tenant_status_idx ON release_candidates (tenant_id, status, created_at DESC);
+CREATE INDEX release_rollout_release_idx ON release_rollout_events (tenant_id, release_id, sequence_no);

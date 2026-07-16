@@ -266,9 +266,7 @@ class OpenAICompatibleAdapter:
             if response.status_code >= 400:
                 retryable = response.status_code in {408, 409, 429} or response.status_code >= 500
                 code = (
-                    "MODEL_RATE_LIMITED"
-                    if response.status_code == 429
-                    else "MODEL_UPSTREAM_ERROR"
+                    "MODEL_RATE_LIMITED" if response.status_code == 429 else "MODEL_UPSTREAM_ERROR"
                 )
                 raise ModelProviderError(
                     code,

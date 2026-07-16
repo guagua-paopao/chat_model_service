@@ -1,12 +1,13 @@
 openapi: 3.1.0
 info:
   title: Enterprise QA System API
-  version: 1.6.0-s6
+  version: 1.7.0-s7
   description: |
     企业知识问答系统的核心契约。租户从已验证的身份上下文解析，客户端不得自报 tenant_id。
     S4 知识问答在 ACL 过滤后执行混合检索与重排，并保存检索、提示词、模型和引用快照。
     流式知识回答先缓冲并验证引用，再向客户端输出；SSE 事件结构见 S4 API 设计文档。
     S5 增加服务端目录态、集中授权、不可变配置门禁、数据库共享配额、哈希链治理审计和安全事件台账。
+    S7 增加不可变发布候选、UAT/多角色签署、分阶段灰度、自动停止/回滚和运营移交证据。
 servers:
   - url: https://qa.example.com/api/v1
     description: Production placeholder
@@ -22,6 +23,7 @@ tags:
   - name: Feedback
   - name: Operations
   - name: Enterprise Governance
+  - name: Release Operations
 paths:
   /me:
     get:
@@ -889,6 +891,91 @@ paths:
         '200':
           description: Incident transitioned
           content: {application/json: {schema: {$ref: '#/components/schemas/SecurityIncident'}}}
+  /admin/releases:
+    get:
+      tags: [Release Operations]
+      summary: List tenant-scoped release candidates and evidence
+      operationId: listReleaseCandidates
+      security: [{oauth2: [qa:release:read]}]
+      responses:
+        '200': {description: Release candidates, content: {application/json: {schema: {type: object, required: [items], properties: {items: {type: array, items: {$ref: '#/components/schemas/ReleaseCandidate'}}}}}}}
+    post:
+      tags: [Release Operations]
+      summary: Freeze an immutable release candidate from a passing evaluation
+      operationId: createReleaseCandidate
+      security: [{oauth2: [qa:release:create]}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseCandidateCreate'}}}}
+      responses:
+        '201': {description: Candidate frozen, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseCandidate'}}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/releases/{release_id}:
+    get:
+      tags: [Release Operations]
+      summary: Read a release candidate with UAT, signoffs and rollout events
+      operationId: getReleaseCandidate
+      security: [{oauth2: [qa:release:read]}]
+      parameters: [{name: release_id, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}]
+      responses:
+        '200': {description: Release evidence, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseCandidate'}}}}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /admin/releases/{release_id}/uat-results:
+    post:
+      tags: [Release Operations]
+      summary: Append one immutable UC-01 through UC-05 UAT result
+      operationId: recordReleaseUat
+      security: [{oauth2: [qa:release:uat]}]
+      parameters: [{name: release_id, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseUatResultCreate'}}}}
+      responses:
+        '200': {description: Updated release evidence, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseCandidate'}}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/releases/{release_id}/signoffs:
+    post:
+      tags: [Release Operations]
+      summary: Append an independent product, business, data, security or SRE signoff
+      operationId: signoffRelease
+      security: [{oauth2: [qa:release:signoff]}]
+      parameters: [{name: release_id, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseSignoffCreate'}}}}
+      responses:
+        '200': {description: Updated release evidence, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseCandidate'}}}}
+        '409': {$ref: '#/components/responses/Conflict'}
+  /admin/releases/{release_id}/rollout/start:
+    post:
+      tags: [Release Operations]
+      summary: Start an approved candidate at the dark stage
+      operationId: startReleaseRollout
+      security: [{oauth2: [qa:release:rollout]}]
+      parameters: [{name: release_id, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseActionRequest'}}}}
+      responses: {'200': {description: Dark rollout started, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseCandidate'}}}}, '409': {$ref: '#/components/responses/Conflict'}}
+  /admin/releases/{release_id}/rollout/advance:
+    post:
+      tags: [Release Operations]
+      summary: Evaluate an observation window and advance, stop or roll back
+      operationId: advanceReleaseRollout
+      security: [{oauth2: [qa:release:rollout]}]
+      parameters: [{name: release_id, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseRolloutAdvance'}}}}
+      responses: {'200': {description: Deterministic rollout decision, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseCandidate'}}}}, '409': {$ref: '#/components/responses/Conflict'}}
+  /admin/releases/{release_id}/rollout/stop:
+    post:
+      tags: [Release Operations]
+      summary: Manually stop an active rollout
+      operationId: stopReleaseRollout
+      security: [{oauth2: [qa:release:rollout]}]
+      parameters: [{name: release_id, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseActionRequest'}}}}
+      responses: {'200': {description: Rollout stopped, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseCandidate'}}}}}
+  /admin/releases/{release_id}/rollout/rollback:
+    post:
+      tags: [Release Operations]
+      summary: Roll back to the candidate's immutable rollback target
+      operationId: rollbackRelease
+      security: [{oauth2: [qa:release:rollout]}]
+      parameters: [{name: release_id, in: path, required: true, schema: {$ref: '#/components/schemas/Uuid'}}]
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseActionRequest'}}}}
+      responses: {'200': {description: Rollback recorded, content: {application/json: {schema: {$ref: '#/components/schemas/ReleaseCandidate'}}}}}
 components:
   securitySchemes:
     oauth2:
@@ -923,6 +1010,11 @@ components:
             qa:evaluation:run: Execute an immutable quality evaluation run
             qa:evaluation:read: Read tenant-scoped evaluation evidence
             qa:operations:read: Read privacy-safe operational snapshots
+            qa:release:read: Read tenant release evidence
+            qa:release:create: Freeze an immutable release candidate
+            qa:release:uat: Record controlled UAT evidence
+            qa:release:signoff: Record category-bound independent release signoff
+            qa:release:rollout: Start, advance, stop and roll back a release rehearsal
   parameters:
     ConversationId:
       name: conversation_id
@@ -1625,6 +1717,101 @@ components:
         production_slo_evidence: {type: boolean, const: false}
         request_window: {type: object, additionalProperties: true}
         tenant_signals: {type: object, additionalProperties: true}
+    ReleaseCandidateCreate:
+      type: object
+      additionalProperties: false
+      required: [release_version, git_sha, image_digest, sbom_digest, db_migration, model_route_versions, eval_run_id, rollback_target]
+      properties:
+        release_version: {type: string, minLength: 3, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]+$'}
+        git_sha: {type: string, pattern: '^[0-9a-f]{40}$'}
+        image_digest: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        sbom_digest: {type: string, pattern: '^sha256:[0-9a-f]{64}$'}
+        db_migration: {type: string, minLength: 3, maxLength: 64, pattern: '^[A-Za-z0-9._-]+$'}
+        model_route_versions: {type: array, minItems: 1, maxItems: 10, uniqueItems: true, items: {type: string, minLength: 1, maxLength: 128}}
+        eval_run_id: {$ref: '#/components/schemas/Uuid'}
+        rollback_target: {type: string, minLength: 3, maxLength: 128, pattern: '^[A-Za-z0-9][A-Za-z0-9._-]+$'}
+        known_issues: {type: array, maxItems: 20, items: {type: string, minLength: 1, maxLength: 300}}
+    ReleaseUatResultCreate:
+      type: object
+      additionalProperties: false
+      required: [case_id, result, evidence_ref]
+      properties:
+        case_id: {type: string, enum: [UC-01, UC-02, UC-03, UC-04, UC-05]}
+        result: {type: string, enum: [passed, failed]}
+        evidence_ref: {type: string, minLength: 3, maxLength: 256}
+        notes_safe: {type: [string, 'null'], maxLength: 500}
+    ReleaseSignoffCreate:
+      type: object
+      additionalProperties: false
+      required: [category, decision, approval_id, evidence_ref, reason]
+      properties:
+        category: {type: string, enum: [product, business, data, security, sre]}
+        decision: {type: string, enum: [approved, rejected]}
+        approval_id: {type: string, minLength: 3, maxLength: 128}
+        evidence_ref: {type: string, minLength: 3, maxLength: 256}
+        reason: {type: string, minLength: 10, maxLength: 500}
+    ReleaseActionRequest:
+      type: object
+      additionalProperties: false
+      required: [reason, approval_id]
+      properties:
+        reason: {type: string, minLength: 10, maxLength: 500}
+        approval_id: {type: string, minLength: 3, maxLength: 128}
+    RolloutObservation:
+      type: object
+      additionalProperties: false
+      required: [observed_seconds, requests, server_error_rate, ttft_p95_ms, response_p95_ms, negative_feedback_rate, citation_precision, cost_delta_ratio, quality_delta, security_incidents, unauthorized_leakage_count, evidence_ref]
+      properties:
+        observed_seconds: {type: integer, minimum: 60, maximum: 86400}
+        requests: {type: integer, minimum: 1}
+        server_error_rate: {type: number, minimum: 0, maximum: 1}
+        ttft_p95_ms: {type: number, minimum: 0}
+        response_p95_ms: {type: number, minimum: 0}
+        negative_feedback_rate: {type: number, minimum: 0, maximum: 1}
+        citation_precision: {type: number, minimum: 0, maximum: 1}
+        cost_delta_ratio: {type: number, minimum: -1, maximum: 10}
+        quality_delta: {type: number, minimum: -1, maximum: 1}
+        security_incidents: {type: integer, minimum: 0}
+        unauthorized_leakage_count: {type: integer, minimum: 0}
+        evidence_ref: {type: string, minLength: 3, maxLength: 256}
+    ReleaseRolloutAdvance:
+      type: object
+      additionalProperties: false
+      required: [target_stage, observation, reason]
+      properties:
+        target_stage: {type: string, enum: [percent_5, percent_25, percent_50, percent_100]}
+        observation: {$ref: '#/components/schemas/RolloutObservation'}
+        reason: {type: string, minLength: 10, maxLength: 500}
+    ReleaseCandidate:
+      type: object
+      additionalProperties: false
+      required: [id, release_version, git_sha, image_digest, sbom_digest, db_migration, prompt_versions, retrieval_versions, model_route_versions, dataset_version, eval_run_id, rollback_target, known_issues, artifact_checksum, status, current_stage, uat_results, signoffs, rollout_events, rollout_integrity_valid, created_by, created_at]
+      properties:
+        id: {$ref: '#/components/schemas/Uuid'}
+        release_version: {type: string}
+        git_sha: {type: string}
+        image_digest: {type: string}
+        sbom_digest: {type: string}
+        db_migration: {type: string}
+        prompt_versions: {type: array, items: {type: string}}
+        retrieval_versions: {type: array, items: {type: string}}
+        model_route_versions: {type: array, items: {type: string}}
+        dataset_version: {type: string}
+        eval_run_id: {$ref: '#/components/schemas/Uuid'}
+        rollback_target: {type: string}
+        known_issues: {type: array, items: {type: string}}
+        artifact_checksum: {type: string, pattern: '^[0-9a-f]{64}$'}
+        status: {type: string, enum: [draft, qualified, approved, rolling_out, stopped, rejected, completed, rolled_back]}
+        current_stage: {type: string, enum: [none, dark, percent_5, percent_25, percent_50, percent_100, rolled_back]}
+        uat_results: {type: array, items: {type: object, additionalProperties: true}}
+        signoffs: {type: array, items: {type: object, additionalProperties: true}}
+        rollout_events: {type: array, items: {type: object, additionalProperties: true}}
+        rollout_integrity_valid: {type: boolean}
+        created_by: {$ref: '#/components/schemas/Uuid'}
+        created_at: {$ref: '#/components/schemas/Timestamp'}
+        qualified_at: {oneOf: [{$ref: '#/components/schemas/Timestamp'}, {type: 'null'}]}
+        approved_at: {oneOf: [{$ref: '#/components/schemas/Timestamp'}, {type: 'null'}]}
+        completed_at: {oneOf: [{$ref: '#/components/schemas/Timestamp'}, {type: 'null'}]}
     Problem:
       type: object
       required: [type, title, status, code, detail, request_id, retryable]

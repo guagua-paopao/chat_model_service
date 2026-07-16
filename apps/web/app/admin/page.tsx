@@ -13,6 +13,7 @@ type Quality = { retrieval_runs: number; abstention_rate: number; citations: num
 type Audit = { sequence_no: number; action: string; result: string; resource_type: string; occurred_at: string };
 type Incident = { id: string; title: string; severity: string; status: string };
 type Evaluation = { id: string; gate_result: string; dataset_version_id: string; candidate_config_ids: string[]; completed_at?: string };
+type Release = { id: string; release_version: string; status: string; current_stage: string; artifact_checksum: string; uat_results: unknown[]; signoffs: unknown[]; rollout_events: unknown[] };
 type Operations = {
   scope: string;
   production_slo_evidence: boolean;
@@ -42,6 +43,7 @@ export default function GovernanceConsole() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [operations, setOperations] = useState<Operations | null>(null);
+  const [releases, setReleases] = useState<Release[]>([]);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -58,8 +60,9 @@ export default function GovernanceConsole() {
       read<{ items: Incident[] }>("admin/security-incidents"),
       read<{ items: Evaluation[] }>("evaluations/runs?limit=10"),
       read<Operations>("admin/operations/snapshot"),
+      read<{ items: Release[] }>("admin/releases?limit=10"),
     ])
-      .then(([me, userData, groupData, configData, quotaData, usageData, qualityData, auditData, auditIntegrity, incidentData, evaluationData, operationsData]) => {
+      .then(([me, userData, groupData, configData, quotaData, usageData, qualityData, auditData, auditIntegrity, incidentData, evaluationData, operationsData, releaseData]) => {
         setIdentity(me);
         setUsers(userData.items);
         setGroups(groupData.items);
@@ -72,6 +75,7 @@ export default function GovernanceConsole() {
         setIncidents(incidentData.items);
         setEvaluations(evaluationData.items);
         setOperations(operationsData);
+        setReleases(releaseData.items);
       })
       .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "加载失败"));
   }, []);
@@ -79,7 +83,7 @@ export default function GovernanceConsole() {
   return (
     <main className="admin-main">
       <section className="card admin-card">
-        <p className="eyebrow">S6 · Quality, reliability and governance</p>
+        <p className="eyebrow">S7 · UAT, rollout and operations handover</p>
         <div className="admin-heading">
           <div><h1>企业问答治理与可靠性控制台</h1><p>只读展示安全摘要；本页的进程窗口不是生产 SLO 证据。</p></div>
           <Link className="login" href="/">返回问答</Link>
@@ -92,6 +96,12 @@ export default function GovernanceConsole() {
           <article className="metric"><small>进程窗口 P95</small><strong>{operations?.request_window.latency_ms.p95 ?? "—"}</strong><span>ms · 仅本实例最近 5 分钟</span></article>
           <article className="metric"><small>评测门禁失败</small><strong>{evaluations.filter((item) => item.gate_result === "failed").length}</strong><span>最近 {evaluations.length} 次运行</span></article>
           <article className="metric"><small>审计完整性</small><strong>{integrity}</strong><span>tenant hash chain</span></article>
+        </section>
+
+        <section className="panel">
+          <h2>S7 发布候选与灰度证据</h2>
+          {releases.length === 0 && <p>尚无发布候选。</p>}
+          {releases.map((item) => <p className="row" key={item.id}><strong>{item.release_version} · {item.status}</strong><span>{item.current_stage} · UAT {item.uat_results.length}/5 · signoff {item.signoffs.length}/5 · events {item.rollout_events.length} · {item.artifact_checksum.slice(0, 12)}</span></p>)}
         </section>
 
         <section className="panel">

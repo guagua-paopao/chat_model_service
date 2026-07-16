@@ -46,9 +46,7 @@ def conversation(client: TestClient, headers: dict[str, str], title: str) -> str
     return str(response.json()["id"])
 
 
-def chat(
-    client: TestClient, headers: dict[str, str], conversation_id: str, message: str
-) -> Any:
+def chat(client: TestClient, headers: dict[str, str], conversation_id: str, message: str) -> Any:
     return client.post(
         "/api/v1/chat/completions",
         headers=headers,
@@ -131,8 +129,7 @@ def run() -> dict[str, object]:
             results["missing_usage_estimated"] = {
                 "status": usage.status_code,
                 "estimated": usage.json().get("usage", {}).get("estimated"),
-                "passed": usage.status_code == 200
-                and usage.json()["usage"]["estimated"] is True,
+                "passed": usage.status_code == 200 and usage.json()["usage"]["estimated"] is True,
             }
             healthy = chat(
                 client,

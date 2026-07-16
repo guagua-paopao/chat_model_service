@@ -211,9 +211,7 @@ class DocumentVersionRow(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "id"),
         UniqueConstraint("tenant_id", "document_id", "version_no"),
-        ForeignKeyConstraint(
-            ["tenant_id", "document_id"], ["documents.tenant_id", "documents.id"]
-        ),
+        ForeignKeyConstraint(["tenant_id", "document_id"], ["documents.tenant_id", "documents.id"]),
         Index("document_versions_document_status_idx", "tenant_id", "document_id", "status"),
     )
 
@@ -250,9 +248,7 @@ class DocumentAclRow(Base):
     __tablename__ = "document_acl"
     __table_args__ = (
         UniqueConstraint("tenant_id", "document_id", "subject_type", "subject_id", "permission"),
-        ForeignKeyConstraint(
-            ["tenant_id", "document_id"], ["documents.tenant_id", "documents.id"]
-        ),
+        ForeignKeyConstraint(["tenant_id", "document_id"], ["documents.tenant_id", "documents.id"]),
         Index("document_acl_subject_idx", "tenant_id", "subject_type", "subject_id"),
     )
 
@@ -270,9 +266,7 @@ class DocumentChunkRow(Base):
     __tablename__ = "document_chunks"
     __table_args__ = (
         UniqueConstraint("tenant_id", "version_id", "chunk_index"),
-        ForeignKeyConstraint(
-            ["tenant_id", "document_id"], ["documents.tenant_id", "documents.id"]
-        ),
+        ForeignKeyConstraint(["tenant_id", "document_id"], ["documents.tenant_id", "documents.id"]),
         ForeignKeyConstraint(
             ["tenant_id", "version_id"],
             ["document_versions.tenant_id", "document_versions.id"],
@@ -311,9 +305,7 @@ class IngestionJobRow(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "id"),
         UniqueConstraint("tenant_id", "idempotency_key"),
-        ForeignKeyConstraint(
-            ["tenant_id", "document_id"], ["documents.tenant_id", "documents.id"]
-        ),
+        ForeignKeyConstraint(["tenant_id", "document_id"], ["documents.tenant_id", "documents.id"]),
         ForeignKeyConstraint(
             ["tenant_id", "version_id"],
             ["document_versions.tenant_id", "document_versions.id"],
@@ -438,9 +430,7 @@ class EvaluationRunRow(Base):
     dataset_version_id: Mapped[str] = mapped_column(String(128), nullable=False)
     dataset_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
     candidate_config_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
-    candidate_config_snapshots: Mapped[list[dict[str, Any]]] = mapped_column(
-        JSON, nullable=False
-    )
+    candidate_config_snapshots: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
     baseline_run_id: Mapped[UUID | None] = mapped_column(Uuid)
     status: Mapped[str] = mapped_column(String(24), nullable=False)
     metrics: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
@@ -458,6 +448,112 @@ class EvaluationRunRow(Base):
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ReleaseCandidateRow(Base):
+    __tablename__ = "release_candidates"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("tenant_id", "release_version"),
+        Index("release_candidates_tenant_created_idx", "tenant_id", "created_at"),
+        Index("release_candidates_tenant_status_idx", "tenant_id", "status", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    release_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    git_sha: Mapped[str] = mapped_column(String(40), nullable=False)
+    image_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    sbom_digest: Mapped[str] = mapped_column(String(71), nullable=False)
+    db_migration: Mapped[str] = mapped_column(String(64), nullable=False)
+    prompt_versions: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    retrieval_versions: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    model_route_versions: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    dataset_version: Mapped[str] = mapped_column(String(128), nullable=False)
+    eval_run_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("evaluation_runs.id"), nullable=False
+    )
+    rollback_target: Mapped[str] = mapped_column(String(128), nullable=False)
+    known_issues: Mapped[list[str]] = mapped_column(JSON, default=list, nullable=False)
+    artifact_manifest: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    artifact_checksum: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    current_stage: Mapped[str] = mapped_column(String(24), nullable=False)
+    created_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+    qualified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ReleaseUatResultRow(Base):
+    __tablename__ = "release_uat_results"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("tenant_id", "release_id", "case_id"),
+        Index("release_uat_release_idx", "tenant_id", "release_id", "executed_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    release_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("release_candidates.id"), nullable=False
+    )
+    case_id: Mapped[str] = mapped_column(String(16), nullable=False)
+    result: Mapped[str] = mapped_column(String(16), nullable=False)
+    evidence_ref: Mapped[str] = mapped_column(String(256), nullable=False)
+    notes_safe: Mapped[str | None] = mapped_column(String(500))
+    executed_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    executed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ReleaseSignoffRow(Base):
+    __tablename__ = "release_signoffs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("tenant_id", "release_id", "category"),
+        UniqueConstraint("tenant_id", "release_id", "signed_by"),
+        Index("release_signoffs_release_idx", "tenant_id", "release_id", "signed_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    release_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("release_candidates.id"), nullable=False
+    )
+    category: Mapped[str] = mapped_column(String(24), nullable=False)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    approval_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    evidence_ref: Mapped[str] = mapped_column(String(256), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    signed_by: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    signed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+
+class ReleaseRolloutEventRow(Base):
+    __tablename__ = "release_rollout_events"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id"),
+        UniqueConstraint("tenant_id", "release_id", "sequence_no"),
+        Index("release_rollout_release_idx", "tenant_id", "release_id", "sequence_no"),
+    )
+
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    tenant_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("tenants.id"), nullable=False)
+    release_id: Mapped[UUID] = mapped_column(
+        Uuid, ForeignKey("release_candidates.id"), nullable=False
+    )
+    sequence_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    from_stage: Mapped[str] = mapped_column(String(24), nullable=False)
+    to_stage: Mapped[str] = mapped_column(String(24), nullable=False)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    observation: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    actor_user_id: Mapped[UUID] = mapped_column(Uuid, nullable=False)
+    previous_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    event_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
 
 class ConversationRow(Base):
@@ -852,6 +948,12 @@ DISABLED_USER_ID = UUID("00000000-0000-7000-8000-000000000102")
 CONFIG_APPROVER_USER_ID = UUID("00000000-0000-7000-8000-000000000103")
 AUDITOR_USER_ID = UUID("00000000-0000-7000-8000-000000000104")
 GOVERNANCE_ADMIN_USER_ID = UUID("00000000-0000-7000-8000-000000000105")
+RELEASE_MANAGER_USER_ID = UUID("00000000-0000-7000-8000-000000000106")
+PRODUCT_APPROVER_USER_ID = UUID("00000000-0000-7000-8000-000000000107")
+BUSINESS_APPROVER_USER_ID = UUID("00000000-0000-7000-8000-000000000108")
+DATA_APPROVER_USER_ID = UUID("00000000-0000-7000-8000-000000000109")
+SECURITY_APPROVER_USER_ID = UUID("00000000-0000-7000-8000-000000000110")
+SRE_APPROVER_USER_ID = UUID("00000000-0000-7000-8000-000000000111")
 OTHER_USER_ID = UUID("00000000-0000-7000-8000-000000000201")
 DEMO_ROLE_ID = UUID("00000000-0000-7000-8000-000000001001")
 OTHER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001002")
@@ -859,6 +961,12 @@ DEMO_KNOWLEDGE_ROLE_ID = UUID("00000000-0000-7000-8000-000000001003")
 DEMO_GOVERNANCE_ROLE_ID = UUID("00000000-0000-7000-8000-000000001004")
 CONFIG_APPROVER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001005")
 AUDITOR_ROLE_ID = UUID("00000000-0000-7000-8000-000000001006")
+RELEASE_MANAGER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001007")
+PRODUCT_APPROVER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001008")
+BUSINESS_APPROVER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001009")
+DATA_APPROVER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001010")
+SECURITY_APPROVER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001011")
+SRE_APPROVER_ROLE_ID = UUID("00000000-0000-7000-8000-000000001012")
 DEMO_GROUP_ID = UUID("00000000-0000-7000-8000-000000002001")
 DEMO_QUOTA_POLICY_ID = UUID("00000000-0000-7000-8000-000000003001")
 
@@ -1018,6 +1126,12 @@ def _sync_demo_issuers(session: Session, issuer: str) -> None:
         CONFIG_APPROVER_USER_ID,
         AUDITOR_USER_ID,
         GOVERNANCE_ADMIN_USER_ID,
+        RELEASE_MANAGER_USER_ID,
+        PRODUCT_APPROVER_USER_ID,
+        BUSINESS_APPROVER_USER_ID,
+        DATA_APPROVER_USER_ID,
+        SECURITY_APPROVER_USER_ID,
+        SRE_APPROVER_USER_ID,
         OTHER_USER_ID,
     )
     for user in session.scalars(select(UserRow).where(UserRow.id.in_(demo_ids))):
@@ -1042,6 +1156,32 @@ def _ensure_s5_governance_seed(session: Session, issuer: str, settings: Settings
             "Configuration Approver",
         ),
         (AUDITOR_USER_ID, "demo-auditor", "auditor@example.invalid", "Governance Auditor"),
+        (
+            RELEASE_MANAGER_USER_ID,
+            "release-manager",
+            "release.manager@example.invalid",
+            "Release Manager",
+        ),
+        (
+            PRODUCT_APPROVER_USER_ID,
+            "product-approver",
+            "product.approver@example.invalid",
+            "Product Approver",
+        ),
+        (
+            BUSINESS_APPROVER_USER_ID,
+            "business-approver",
+            "business.approver@example.invalid",
+            "Business UAT Approver",
+        ),
+        (DATA_APPROVER_USER_ID, "data-approver", "data.approver@example.invalid", "Data Approver"),
+        (
+            SECURITY_APPROVER_USER_ID,
+            "security-approver",
+            "security.approver@example.invalid",
+            "Security Approver",
+        ),
+        (SRE_APPROVER_USER_ID, "sre-approver", "sre.approver@example.invalid", "SRE Approver"),
     )
     for user_id, subject, email, display_name in users:
         if session.get(UserRow, user_id) is None:
@@ -1083,6 +1223,9 @@ def _ensure_s5_governance_seed(session: Session, issuer: str, settings: Settings
                 "qa:evaluation:run",
                 "qa:evaluation:read",
                 "qa:operations:read",
+                "qa:release:read",
+                "qa:release:create",
+                "qa:release:rollout",
             ],
         ),
         (
@@ -1102,7 +1245,44 @@ def _ensure_s5_governance_seed(session: Session, issuer: str, settings: Settings
                 "qa:security-incident:read",
                 "qa:evaluation:read",
                 "qa:operations:read",
+                "qa:release:read",
             ],
+        ),
+        (
+            RELEASE_MANAGER_ROLE_ID,
+            "release_manager",
+            "Release candidate and rollout manager",
+            ["qa:release:read", "qa:release:create", "qa:release:rollout"],
+        ),
+        (
+            PRODUCT_APPROVER_ROLE_ID,
+            "release_product_approver",
+            "Product release approver",
+            ["qa:release:read", "qa:release:signoff"],
+        ),
+        (
+            BUSINESS_APPROVER_ROLE_ID,
+            "release_business_approver",
+            "Business UAT and release approver",
+            ["qa:release:read", "qa:release:uat", "qa:release:signoff"],
+        ),
+        (
+            DATA_APPROVER_ROLE_ID,
+            "release_data_approver",
+            "Data release approver",
+            ["qa:release:read", "qa:release:signoff"],
+        ),
+        (
+            SECURITY_APPROVER_ROLE_ID,
+            "release_security_approver",
+            "Security release approver",
+            ["qa:release:read", "qa:release:signoff"],
+        ),
+        (
+            SRE_APPROVER_ROLE_ID,
+            "release_sre_approver",
+            "SRE release approver",
+            ["qa:release:read", "qa:release:signoff"],
         ),
     )
     for role_id, code, name, permissions in roles:
@@ -1126,6 +1306,12 @@ def _ensure_s5_governance_seed(session: Session, issuer: str, settings: Settings
         (GOVERNANCE_ADMIN_USER_ID, DEMO_GOVERNANCE_ROLE_ID),
         (CONFIG_APPROVER_USER_ID, CONFIG_APPROVER_ROLE_ID),
         (AUDITOR_USER_ID, AUDITOR_ROLE_ID),
+        (RELEASE_MANAGER_USER_ID, RELEASE_MANAGER_ROLE_ID),
+        (PRODUCT_APPROVER_USER_ID, PRODUCT_APPROVER_ROLE_ID),
+        (BUSINESS_APPROVER_USER_ID, BUSINESS_APPROVER_ROLE_ID),
+        (DATA_APPROVER_USER_ID, DATA_APPROVER_ROLE_ID),
+        (SECURITY_APPROVER_USER_ID, SECURITY_APPROVER_ROLE_ID),
+        (SRE_APPROVER_USER_ID, SRE_APPROVER_ROLE_ID),
     )
     for user_id, role_id in memberships:
         key = {"tenant_id": DEMO_TENANT_ID, "user_id": user_id, "role_id": role_id}
@@ -1150,6 +1336,12 @@ def _ensure_s5_governance_seed(session: Session, issuer: str, settings: Settings
         GOVERNANCE_ADMIN_USER_ID,
         CONFIG_APPROVER_USER_ID,
         AUDITOR_USER_ID,
+        RELEASE_MANAGER_USER_ID,
+        PRODUCT_APPROVER_USER_ID,
+        BUSINESS_APPROVER_USER_ID,
+        DATA_APPROVER_USER_ID,
+        SECURITY_APPROVER_USER_ID,
+        SRE_APPROVER_USER_ID,
     ):
         key = {"tenant_id": DEMO_TENANT_ID, "group_id": DEMO_GROUP_ID, "user_id": user_id}
         if session.get(GroupMemberRow, key) is None:

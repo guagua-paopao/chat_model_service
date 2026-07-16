@@ -140,9 +140,7 @@ class IngestionIntegrationTests(unittest.TestCase):
         completed = self.process(str(job["id"]))
         self.assertEqual(completed["status"], "completed")
         self.assertEqual(completed["stage"], "completed")
-        detail = self.client.get(
-            f"/api/v1/documents/{upload['document_id']}", headers=self.headers
-        )
+        detail = self.client.get(f"/api/v1/documents/{upload['document_id']}", headers=self.headers)
         self.assertEqual(detail.status_code, 200, detail.text)
         self.assertEqual(detail.json()["status"], "ready")
         self.assertEqual(detail.json()["versions"][0]["actual_sha256"], sha256)
@@ -184,9 +182,7 @@ class IngestionIntegrationTests(unittest.TestCase):
         kb_id = self.knowledge_base("version")
         first = b"# Policy\n\nLegacy allowance is 100 units."
         first_upload = self.create_upload(kb_id, first, title="allowance")
-        first_job = self.put_and_complete(
-            first_upload, first, hashlib.sha256(first).hexdigest()
-        )
+        first_job = self.put_and_complete(first_upload, first, hashlib.sha256(first).hexdigest())
         self.assertEqual(self.process(str(first_job["id"]))["status"], "completed")
 
         second = b"# Policy\n\nCurrent allowance is 250 units."
@@ -219,9 +215,7 @@ class IngestionIntegrationTests(unittest.TestCase):
         tampered = b"# Bad!\n\nTampered content."
         self.assertEqual(len(expected), len(tampered))
         expected_sha = hashlib.sha256(expected).hexdigest()
-        upload = self.create_upload(
-            kb_id, tampered, title="tampered", declared_sha=expected_sha
-        )
+        upload = self.create_upload(kb_id, tampered, title="tampered", declared_sha=expected_sha)
         job = self.put_and_complete(upload, tampered, expected_sha)
         failed = self.process(str(job["id"]))
         self.assertEqual(failed["status"], "failed")
@@ -231,9 +225,7 @@ class IngestionIntegrationTests(unittest.TestCase):
         )
         self.assertEqual(missing_key.status_code, 428)
         retry_headers = {**self.headers, "Idempotency-Key": "operator-retry-1"}
-        retry = self.client.post(
-            f"/api/v1/ingestion-jobs/{job['id']}/retry", headers=retry_headers
-        )
+        retry = self.client.post(f"/api/v1/ingestion-jobs/{job['id']}/retry", headers=retry_headers)
         repeated = self.client.post(
             f"/api/v1/ingestion-jobs/{job['id']}/retry", headers=retry_headers
         )

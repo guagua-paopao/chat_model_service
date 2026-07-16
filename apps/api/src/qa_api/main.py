@@ -79,6 +79,8 @@ from qa_api.policy import PolicyEngine
 from qa_api.quality import QualityService
 from qa_api.quality_api import build_quality_router
 from qa_api.rag import CitationView, RagService
+from qa_api.release import ReleaseService
+from qa_api.release_api import build_release_router
 from qa_api.repositories import (
     ConversationRepository,
     IdentityRepository,
@@ -104,6 +106,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     policy = PolicyEngine()
     telemetry = Telemetry(resolved_settings)
     quality_service = QualityService(resolved_settings, telemetry)
+    release_service = ReleaseService(resolved_settings)
     rag_service = RagService(
         settings=resolved_settings,
         session_factory=database.session_factory,
@@ -144,7 +147,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app = FastAPI(
         title="Enterprise QA API",
-        version="0.6.0-s6",
+        version="0.7.0-s7",
         openapi_url="/api/v1/openapi.json",
         docs_url="/api/v1/docs" if resolved_settings.app_env != "production" else None,
         redoc_url=None,
@@ -162,9 +165,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.policy_engine = policy
     app.state.telemetry = telemetry
     app.state.quality_service = quality_service
-    app.add_middleware(
-        RequestContextMiddleware, settings=resolved_settings, telemetry=telemetry
-    )
+    app.state.release_service = release_service
+    app.add_middleware(RequestContextMiddleware, settings=resolved_settings, telemetry=telemetry)
 
     def get_session() -> Iterator[Session]:
         yield from database.sessions()
@@ -319,9 +321,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return KnowledgeBaseListResponse(
             items=[
                 _knowledge_base_response(row)
-                for row in ingestion_service.list_knowledge_bases(
-                    tenant_id=principal.tenant_id
-                )
+                for row in ingestion_service.list_knowledge_bases(tenant_id=principal.tenant_id)
             ]
         )
 
@@ -580,9 +580,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             messages=[
                 _message_response(
                     message,
-                    rag_service.list_citations(
-                        principal=principal, message_id=message.id
-                    )
+                    rag_service.list_citations(principal=principal, message_id=message.id)
                     if message.role == "assistant"
                     else [],
                 )
@@ -761,6 +759,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(
         build_quality_router(
             service=quality_service,
+            get_session=get_session,
+            get_principal=get_principal,
+            policy=policy,
+        )
+    )
+    app.include_router(
+        build_release_router(
+            service=release_service,
             get_session=get_session,
             get_principal=get_principal,
             policy=policy,
@@ -993,12 +999,8 @@ async def _chat_response(
             str(failure.get("message", "The model request failed.")),
             retryable=bool(failure.get("retryable", False)),
         )
-    message = service.get_message(
-        principal=principal, message_id=prepared.assistant_message_id
-    )
-    citations = service.citations(
-        principal=principal, message_id=prepared.assistant_message_id
-    )
+    message = service.get_message(principal=principal, message_id=prepared.assistant_message_id)
+    citations = service.citations(principal=principal, message_id=prepared.assistant_message_id)
     if usage is None:
         raise ApiError(
             500,

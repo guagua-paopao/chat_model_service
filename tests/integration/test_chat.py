@@ -77,9 +77,7 @@ class ChatIntegrationTests(unittest.TestCase):
         self.assertIn("S4", body["message"]["content"])
         self.assertGreater(body["usage"]["output_tokens"], 0)
 
-        detail = self.client.get(
-            f"/api/v1/conversations/{conversation_id}", headers=self.auth()
-        )
+        detail = self.client.get(f"/api/v1/conversations/{conversation_id}", headers=self.auth())
         self.assertEqual(
             [item["role"] for item in detail.json()["messages"]],
             ["user", "assistant"],
@@ -177,12 +175,8 @@ class ChatIntegrationTests(unittest.TestCase):
                 )
             )
             session.commit()
-        first = self.client.post(
-            f"/api/v1/messages/{message_id}/cancel", headers=self.auth()
-        )
-        second = self.client.post(
-            f"/api/v1/messages/{message_id}/cancel", headers=self.auth()
-        )
+        first = self.client.post(f"/api/v1/messages/{message_id}/cancel", headers=self.auth())
+        second = self.client.post(f"/api/v1/messages/{message_id}/cancel", headers=self.auth())
         self.assertEqual((first.status_code, second.status_code), (202, 202))
         self.assertEqual(
             (first.json()["status"], second.json()["status"]),

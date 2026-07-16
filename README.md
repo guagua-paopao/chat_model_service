@@ -11,6 +11,7 @@
 - [S4 可溯源 RAG 闭环](docs/enterprise-qa-system/s4/README.md)
 - [S5 企业治理闭环](docs/enterprise-qa-system/s5/README.md)
 - [S6 质量、可观测性、韧性与恢复](docs/enterprise-qa-system/s6/README.md)
+- [S7 UAT、灰度发布与运营移交](docs/enterprise-qa-system/s7/README.md)
 
 建议从以下三份开始：
 
@@ -23,7 +24,7 @@
 - [OpenAPI 3.1](docs/enterprise-qa-system/openapi.yaml)
 - [PostgreSQL + pgvector 参考 DDL](docs/enterprise-qa-system/schema.sql)
 
-## S6 本地启动
+## S7 本地启动
 
 要求：Python 3.12、Node.js 22、Docker 26+。PowerShell 中执行：
 
@@ -54,12 +55,13 @@ Invoke-RestMethod http://127.0.0.1:8000/api/v1/me -Headers @{Authorization="Bear
 .\.venv\Scripts\python.exe scripts\fault_s6.py
 .\.venv\Scripts\python.exe scripts\drill_s6_recovery.py
 .\.venv\Scripts\python.exe scripts\load_s6.py --profile smoke --duration 3 --rps 2
+.\.venv\Scripts\python.exe scripts\smoke_s7.py
 ```
 
 开发令牌、Fake Provider/Embedding/Reranker 和签名扫描器只允许 `local/test/dev`，生产配置会在启动时拒绝它们。S4 提供 ACL-first hybrid retrieval、grounded/search-only、引用再鉴权与拒答，但合成评测不代表真实业务质量。完整教学、字段和故障注入见 [S4 开发手册](docs/enterprise-qa-system/s4/04-development-tutorial-and-fault-injection.md)。
 
-## S6 当前基线
+## S7 当前基线
 
-S6 已在本地/合成范围完成不可变版本化评测、基线差异门禁、隐私安全 OpenTelemetry、Prometheus/Grafana、SLO 告警骨架、有界压测、确定性故障注入和隔离恢复演练。阶段证据包见 [S6 README](docs/enterprise-qa-system/s6/README.md)。
+S7 已在本地/合成范围完成不可变发布候选、UC-01～05 UAT、五类独立签署、dark→5%→25%→50%→100% 灰度、自动停止/回滚、事件哈希链和运营移交文档。阶段证据包见 [S7 README](docs/enterprise-qa-system/s7/README.md)。
 
-只允许使用合成、公开或明确批准的非敏感资料。生产仍要求真实业务黄金集和签字、外部评测 Worker、企业 OIDC/SCIM、真实 Provider、目标 Kubernetes 压测、Pager/Trace/日志后端、PostgreSQL PITR/对象版本和 WORM/SIEM。S6 local engineering PASS 不是生产批准。
+只允许使用合成、公开或明确批准的非敏感资料。生产仍要求关闭全部 S6 阻断项，并接入企业 IAM/CAB、真实 registry/SBOM/签名、生产同构 staging、外部 Rollout Controller、可信指标、目标压测与 DR。S7 local release rehearsal PASS 不是生产批准。

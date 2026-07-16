@@ -37,9 +37,7 @@ class QualityReliabilityIntegrationTests(unittest.TestCase):
         return {"Authorization": f"Bearer {token_for(cls.settings, subject=subject)}"}
 
     def test_versioned_run_baseline_delta_and_safe_failures(self) -> None:
-        configs = self.client.get(
-            "/api/v1/admin/rag-configs", headers=self.governance
-        )
+        configs = self.client.get("/api/v1/admin/rag-configs", headers=self.governance)
         self.assertEqual(configs.status_code, 200, configs.text)
         baseline_config = configs.json()["items"][0]
         baseline = self.client.post(
@@ -85,37 +83,26 @@ class QualityReliabilityIntegrationTests(unittest.TestCase):
         self.assertTrue(body["failed_cases"])
         self.assertTrue(
             all(
-                set(item)
-                <= {"candidate_config_id", "case_id", "control", "check_code"}
+                set(item) <= {"candidate_config_id", "case_id", "control", "check_code"}
                 for item in body["failed_cases"]
             )
         )
-        self.assertLess(
-            body["deltas"][weak.json()["id"]]["quality_score_vs_baseline"], 0
-        )
+        self.assertLess(body["deltas"][weak.json()["id"]]["quality_score_vs_baseline"], 0)
 
     def test_permissions_tenant_safe_reads_and_operational_views(self) -> None:
-        forbidden = self.client.get(
-            "/api/v1/evaluations/runs", headers=self.employee
-        )
+        forbidden = self.client.get("/api/v1/evaluations/runs", headers=self.employee)
         self.assertEqual(forbidden.status_code, 403)
-        allowed = self.client.get(
-            "/api/v1/evaluations/runs?limit=2", headers=self.auditor
-        )
+        allowed = self.client.get("/api/v1/evaluations/runs?limit=2", headers=self.auditor)
         self.assertEqual(allowed.status_code, 200, allowed.text)
         self.assertLessEqual(len(allowed.json()["items"]), 2)
 
-        operations = self.client.get(
-            "/api/v1/admin/operations/snapshot", headers=self.auditor
-        )
+        operations = self.client.get("/api/v1/admin/operations/snapshot", headers=self.auditor)
         self.assertEqual(operations.status_code, 200, operations.text)
         self.assertEqual(operations.json()["scope"], "process_and_tenant_snapshot")
         self.assertFalse(operations.json()["production_slo_evidence"])
         self.assertNotIn("tenant_id", str(operations.json()["request_window"]))
 
-        usage = self.client.get(
-            "/api/v1/usage?group_by=model", headers=self.auditor
-        )
+        usage = self.client.get("/api/v1/usage?group_by=model", headers=self.auditor)
         self.assertEqual(usage.status_code, 200, usage.text)
         self.assertEqual(usage.json()["group_by"], "model")
 
@@ -133,9 +120,9 @@ class QualityReliabilityIntegrationTests(unittest.TestCase):
         self.assertIn("p95", snapshot["latency_ms"])
 
     def test_dataset_and_candidate_validation_fail_closed(self) -> None:
-        configs = self.client.get(
-            "/api/v1/admin/rag-configs", headers=self.governance
-        ).json()["items"]
+        configs = self.client.get("/api/v1/admin/rag-configs", headers=self.governance).json()[
+            "items"
+        ]
         unsupported = self.client.post(
             "/api/v1/evaluations/runs",
             headers=self.governance,
@@ -148,9 +135,7 @@ class QualityReliabilityIntegrationTests(unittest.TestCase):
         unknown = self.client.post(
             "/api/v1/evaluations/runs",
             headers=self.governance,
-            json={
-                "candidate_config_ids": ["00000000-0000-7000-8000-999999999999"]
-            },
+            json={"candidate_config_ids": ["00000000-0000-7000-8000-999999999999"]},
         )
         self.assertEqual(unknown.status_code, 404)
 
@@ -160,12 +145,10 @@ class QualitySettingsTests(unittest.TestCase):
         disabled = replace(settings(), local_quality_evaluator_enabled=False).validated()
         app = create_app(disabled)
         with TestClient(app) as client:
-            headers = {
-                "Authorization": f"Bearer {token_for(disabled, subject='governance-admin')}"
-            }
-            config_id = client.get(
-                "/api/v1/admin/rag-configs", headers=headers
-            ).json()["items"][0]["id"]
+            headers = {"Authorization": f"Bearer {token_for(disabled, subject='governance-admin')}"}
+            config_id = client.get("/api/v1/admin/rag-configs", headers=headers).json()["items"][0][
+                "id"
+            ]
             result = client.post(
                 "/api/v1/evaluations/runs",
                 headers=headers,

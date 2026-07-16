@@ -35,9 +35,9 @@ def token_for(persona: str) -> str:
         "QA_SMOKE_OIDC_REDIRECT_URI", "http://127.0.0.1:3000/api/auth/callback"
     )
     verifier = base64.urlsafe_b64encode(secrets.token_bytes(48)).rstrip(b"=").decode()
-    challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(
-        b"="
-    ).decode()
+    challenge = (
+        base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
+    )
     response = requests.get(
         f"{issuer}/authorize",
         params={
@@ -179,9 +179,7 @@ def main() -> int:
             "audit integrity",
         )
         quota = expect(
-            requests.get(
-                f"{base}/admin/quota-policies/tenant", headers=headers(admin), timeout=10
-            ),
+            requests.get(f"{base}/admin/quota-policies/tenant", headers=headers(admin), timeout=10),
             200,
             "quota",
         )

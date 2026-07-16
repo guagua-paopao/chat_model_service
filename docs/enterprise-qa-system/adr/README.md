@@ -47,5 +47,12 @@ Accepted ADR 不直接删除；被替代时保留原文并指向新 ADR。改变
 | [ADR-041](ADR-041-bounded-local-load-and-fault-harness.md) | 有界本地压测与故障注入 | Accepted |
 | [ADR-042](ADR-042-restore-proof-over-backup-success.md) | 恢复证明优先于备份状态 | Accepted |
 | [ADR-043](ADR-043-separate-process-snapshot-ledger-and-slo-evidence.md) | 快照、账本与 SLO 证据分层 | Accepted |
+| [ADR-044](ADR-044-immutable-release-candidate-manifest.md) | 不可变发布候选清单 | Accepted |
+| [ADR-045](ADR-045-category-bound-independent-release-signoff.md) | 按类别绑定的独立发布签署 | Accepted |
+| [ADR-046](ADR-046-monotonic-progressive-rollout-stages.md) | 单调递进灰度阶段 | Accepted |
+| [ADR-047](ADR-047-server-owned-rollout-stop-and-rollback-gates.md) | 服务端停止/回滚门禁 | Accepted |
+| [ADR-048](ADR-048-hash-chained-rollout-event-ledger.md) | 灰度事件哈希链 | Accepted |
+| [ADR-049](ADR-049-local-release-orchestrator-fail-closed.md) | 正式环境外部发布控制器 | Accepted |
+| [ADR-050](ADR-050-handover-evidence-is-not-production-acceptance.md) | 移交证据不等于生产验收 | Accepted |
 
 状态流转：`Proposed → Accepted → Superseded/Deprecated`。

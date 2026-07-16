@@ -96,9 +96,7 @@ def main() -> int:
         )
     job = completed_upload.json()
     for _ in range(90):
-        status = session.get(
-            f"{base_url}/api/qa/ingestion-jobs/{job['id']}", timeout=10
-        )
+        status = session.get(f"{base_url}/api/qa/ingestion-jobs/{job['id']}", timeout=10)
         if status.status_code != 200:
             return fail(f"job read failed: {status.status_code} {status.text}")
         job = status.json()
@@ -128,10 +126,7 @@ def main() -> int:
     ):
         return fail(f"published content not retrieved: {body}")
 
-    print(
-        "S3 smoke passed: "
-        f"kb_id={kb_id} document_id={upload['document_id']} job_id={job['id']}"
-    )
+    print(f"S3 smoke passed: kb_id={kb_id} document_id={upload['document_id']} job_id={job['id']}")
     return 0
 
 
