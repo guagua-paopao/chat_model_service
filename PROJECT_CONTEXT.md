@@ -1,9 +1,9 @@
 # Project Context
 
-> 状态：S3 安全文档摄取与 ACL 调试检索纵切完成，生产条件待关闭  
-> 基线版本：s3-v1.0  
+> 状态：S4 可溯源 RAG、引用与拒答纵切完成，生产条件待关闭  
+> 基线版本：s4-v1.0  
 > 基线日期：2026-07-16  
-> 下一阶段：S4 RAG 检索、引用与拒答闭环（仅合成/批准非敏感数据）
+> 下一阶段：S5 质量评测、可观测性与配置治理（仅合成/批准非敏感数据）
 
 ## 1. 当前目标
 
@@ -23,7 +23,7 @@
 | 项目范围与首发场景 | 工程基线已确定，待业务 Owner 签字 | `docs/enterprise-qa-system/s0/01-discovery-baseline.md` |
 | 数据清单与分级策略 | 合成基线完成，真实数据盘点待输入 | `s0/02-data-inventory.md` |
 | 黄金评测集 | 60 条合成样例完成，待业务双人复核 | `tests/evaluation/s0-golden-dataset.jsonl` |
-| 架构与 ADR | ADR-001～018 已接受为开发基线 | `docs/enterprise-qa-system/adr/` |
+| 架构与 ADR | ADR-001～032 已接受为开发基线 | `docs/enterprise-qa-system/adr/` |
 | 威胁模型 | v0.1 完成，开发阶段持续更新 | `s0/05-threat-model.md` |
 | 容量与成本 | 三档容量模型完成，真实价格/流量待确认 | `s0/06-capacity-and-cost-baseline.md` |
 | 裸模型/RAG 基线实验 | 实验协议与记录模板完成，尚未运行真实模型 | `s0/04-baseline-experiment.md` |
@@ -38,6 +38,9 @@
 | S3 安全文档摄取 | 签名直传、双 bucket、四格式解析、异步 Worker、原子发布、ACL 前置调试检索已实现 | `s3/README.md` |
 | S3 质量与全栈 | 45 tests，86% coverage；PostgreSQL/Redis/MinIO/OIDC/直传/Worker/检索 smoke 通过；Python/npm 已知漏洞 0 | `s3/05-test-and-verification-report.md` |
 | S3 Gate | 条件通过 S4 合成 RAG 开发；真实数据、IAM/KMS/ClamAV/K8s/性能仍阻断生产 | `s3/07-s3-gate-review.md` |
+| S4 RAG 闭环 | ACL-first hybrid/RRF/rerank、packing、grounded/search-only、拒答、引用再鉴权、反馈已实现 | `s4/README.md` |
+| S4 质量与全栈 | 58 tests；20-case 合成指标均 1.0、泄漏 0；PostgreSQL pgvector/Compose smoke 通过 | `s4/05-test-and-verification-report.md` |
+| S4 Gate | 条件通过 S5 合成质量/可观测性开发；真实数据/Provider/中文/性能/K8s/DR 仍阻断生产 | `s4/07-s4-gate-review.md` |
 
 ## 3. 已接受技术基线
 
@@ -88,7 +91,7 @@
 
 ## 7. 当前开放问题
 
-阻断真实数据/生产承诺但不阻断 S3 合成开发的问题：
+阻断真实数据/生产承诺但不阻断 S5 合成开发的问题：
 
 - 真实业务 Owner、知识管理员、安全/法务和 SRE 的姓名与审批。
 - 企业 OIDC issuer、组织/组映射和禁用传播时限。
@@ -105,11 +108,20 @@
 
 ## 8. 下一步
 
-1. 进入 S4 合成开发：在 tenant + published + ACL 安全集合中实现 pgvector/full-text/hybrid retrieval、确定性融合、rerank、context packing、引用和证据不足拒答。
+1. 进入 S5 合成开发：扩充多语言/攻击/冲突黄金集，建立 claim-level evaluator、RAG 可观测性、配置审批/灰度/回滚。
 2. Platform/API 完成 Redis 共享配额、并发租约和取消协调；在此之前禁止多副本生产。
 3. 由用户/业务方回答 S0 开放问题；仅在批准后使用真实模型沙箱和非敏感资料运行基线实验。
 4. Platform/IAM 并行补齐企业 OIDC、GitHub dev 自动部署、Helm/Kubernetes、Ingress SSE 和负载验证。
-5. S4 变更必须引用 ADR、OpenAPI、本文件约束和 `s3/07-s3-gate-review.md` 的禁止事项；不得把 S3 debug lexical score 直接接入聊天。
+5. S5 变更必须引用 ADR、OpenAPI、本文件约束和 `s4/07-s4-gate-review.md` 的禁止事项；不得把 S4 合成满分解释为真实业务质量。
+
+## 11. S4 当前基线（覆盖文首旧阶段状态）
+
+- 当前版本：`s4-v1.0`，日期 2026-07-16；证据包：`docs/enterprise-qa-system/s4/`。
+- 已完成：ACL-first pgvector/FTS、weighted RRF、Fake/HTTPS Reranker、context packing、evidence gate、grounded output buffer、Source ID 验证、search-only/no-model abstention、immutable citation/current ACL、feedback、Web/BFF、0004 migration、Compose/Helm 参数。
+- 质量证据：58 tests；`s4-mini-golden-v1` 20 cases 的 Recall@10、citation precision/completeness、groundedness proxy、abstention precision/recall 均 1.0，unauthorized leakage 0。
+- ADR 基线：ADR-001 至 ADR-032；S4 新增 ADR-025 至 ADR-032。
+- 生产阻断：真实业务评测/claim verifier、企业 IAM、真实 Provider/数据条款、中文 tokenizer、固定维度 ANN benchmark、red-team/sandbox、共享 Redis、S3/ClamAV 生产控制、Kubernetes/Ingress/Secret/NetworkPolicy、SLO/观测/DR。
+- 下一阶段：只允许 S5 合成/批准范围开发；S4 完整公开发布仍需用户另行明确确认。
 
 ## 9. 规范优先级
 

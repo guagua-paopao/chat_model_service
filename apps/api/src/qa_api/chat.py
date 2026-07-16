@@ -7,6 +7,7 @@ from collections import defaultdict, deque
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import timedelta
+from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID
 
@@ -34,6 +35,7 @@ from qa_api.persistence import (
     UsageLedgerRow,
     utc_now,
 )
+from qa_api.rag import CitationView, RagService, RetrievalResult
 
 
 @dataclass(slots=True)
@@ -140,11 +142,15 @@ class CancellationRegistry:
 
 @dataclass(frozen=True, slots=True)
 class PreparedChat:
+    principal: Principal
     tenant_id: UUID
     user_id: UUID
     conversation_id: UUID
     assistant_message_id: UUID
     prompt: str
+    roles: tuple[str, ...]
+    response_mode: str
+    knowledge_base_ids: tuple[UUID, ...]
     locale: str
     policy: str
     request_id: str
@@ -169,6 +175,8 @@ class ChatRepository:
         user_id: UUID,
         conversation_id: UUID,
         content: str,
+        response_mode: str,
+        knowledge_base_ids: list[UUID],
         request_id: str,
         trace_id: str,
     ) -> MessageRecord:
@@ -200,6 +208,8 @@ class ChatRepository:
             sequence_no=next_sequence + 1,
             parent_message_id=user_message.id,
             request_id=request_id,
+            response_mode=response_mode,
+            knowledge_base_ids=[str(value) for value in knowledge_base_ids],
         )
         conversation.updated_at = utc_now()
         self._session.add_all([user_message, assistant])
@@ -210,7 +220,11 @@ class ChatRepository:
             resource_id=str(assistant.id),
             request_id=request_id,
             trace_id=trace_id,
-            details={"conversation_id": str(conversation_id)},
+            details={
+                "conversation_id": str(conversation_id),
+                "response_mode": response_mode,
+                "knowledge_base_count": len(knowledge_base_ids),
+            },
         )
         self._session.commit()
         self._session.refresh(assistant)
@@ -261,6 +275,8 @@ class ChatRepository:
             sequence_no=self._next_sequence(tenant_id, failed.conversation_id),
             parent_message_id=parent.id,
             request_id=request_id,
+            response_mode=failed.response_mode,
+            knowledge_base_ids=list(failed.knowledge_base_ids),
         )
         self._session.add(assistant)
         self._audit(
@@ -356,6 +372,7 @@ class ChatRepository:
         route: ModelRoute,
         usage: GatewayUsage,
         finish_reason: str,
+        abstention_reason: str | None = None,
     ) -> MessageRecord:
         now = utc_now()
         self._session.execute(
@@ -375,6 +392,7 @@ class ChatRepository:
                 input_tokens=usage.input_tokens,
                 output_tokens=usage.output_tokens,
                 cached_tokens=usage.cached_tokens,
+                abstention_reason=abstention_reason,
                 updated_at=now,
                 completed_at=now,
             )
@@ -407,7 +425,84 @@ class ChatRepository:
             resource_id=str(prepared.assistant_message_id),
             request_id=prepared.request_id,
             trace_id=prepared.trace_id,
-            details={"route": route.code, "finish_reason": finish_reason},
+            details={
+                "route": route.code,
+                "finish_reason": finish_reason,
+                "response_mode": prepared.response_mode,
+                "abstention_reason": abstention_reason,
+            },
+        )
+        self._session.commit()
+        return self.get_message(
+            tenant_id=prepared.tenant_id,
+            user_id=prepared.user_id,
+            message_id=prepared.assistant_message_id,
+        )
+
+    def complete_without_model(
+        self,
+        *,
+        prepared: PreparedChat,
+        content: str,
+        finish_reason: str,
+        abstention_reason: str | None,
+    ) -> MessageRecord:
+        now = utc_now()
+        self._session.execute(
+            update(MessageRow)
+            .where(
+                MessageRow.tenant_id == prepared.tenant_id,
+                MessageRow.id == prepared.assistant_message_id,
+                MessageRow.status.in_(["pending", "streaming"]),
+            )
+            .values(
+                content=content,
+                status="completed",
+                finish_reason=finish_reason,
+                provider_code="retrieval",
+                model_code="none",
+                route_code="s4-rag-policy",
+                input_tokens=0,
+                output_tokens=estimate_tokens(content),
+                cached_tokens=0,
+                abstention_reason=abstention_reason,
+                updated_at=now,
+                completed_at=now,
+            )
+        )
+        self._session.add(
+            UsageLedgerRow(
+                id=uuid7(),
+                tenant_id=prepared.tenant_id,
+                user_id=prepared.user_id,
+                conversation_id=prepared.conversation_id,
+                message_id=prepared.assistant_message_id,
+                request_id=prepared.request_id,
+                provider_code="retrieval",
+                model_code="none",
+                route_code="s4-rag-policy",
+                route_version="s4-v1",
+                input_tokens=0,
+                output_tokens=estimate_tokens(content),
+                cached_tokens=0,
+                estimated=False,
+                amount=Decimal("0"),
+                currency="USD",
+                price_snapshot={"input_per_1k": "0", "output_per_1k": "0"},
+            )
+        )
+        self._audit(
+            tenant_id=prepared.tenant_id,
+            user_id=prepared.user_id,
+            action="chat.complete_without_model",
+            resource_id=str(prepared.assistant_message_id),
+            request_id=prepared.request_id,
+            trace_id=prepared.trace_id,
+            details={
+                "response_mode": prepared.response_mode,
+                "finish_reason": finish_reason,
+                "abstention_reason": abstention_reason,
+            },
         )
         self._session.commit()
         return self.get_message(
@@ -646,12 +741,14 @@ class ChatService:
         settings: Settings,
         session_factory: sessionmaker[Session],
         gateway: ModelGateway,
+        rag: RagService,
         quotas: QuotaManager,
         cancellations: CancellationRegistry,
     ) -> None:
         self._settings = settings
         self._session_factory = session_factory
         self._gateway = gateway
+        self._rag = rag
         self._quotas = quotas
         self._cancellations = cancellations
 
@@ -666,6 +763,9 @@ class ChatService:
                 message_id=message_id,
             )
 
+    def citations(self, *, principal: Principal, message_id: UUID) -> list[CitationView]:
+        return self._rag.list_citations(principal=principal, message_id=message_id)
+
     async def prepare_new(
         self,
         *,
@@ -679,12 +779,19 @@ class ChatService:
         request_id: str,
         trace_id: str,
     ) -> PreparedChat:
-        if knowledge_base_ids or response_mode != "general":
+        if response_mode == "general" and knowledge_base_ids:
             raise ApiError(
-                409,
-                "KNOWLEDGE_NOT_CONNECTED_IN_S3",
-                "Knowledge mode unavailable",
-                "S3 retrieval is debug-only and is not connected to chat answers.",
+                422,
+                "KNOWLEDGE_MODE_INVALID",
+                "Invalid request",
+                "knowledge_base_ids require grounded_answer or search_only mode.",
+            )
+        if response_mode != "general" and not knowledge_base_ids:
+            raise ApiError(
+                422,
+                "KNOWLEDGE_BASE_REQUIRED",
+                "Invalid request",
+                "At least one knowledge base is required for knowledge mode.",
             )
         lease = await self._quotas.acquire(
             tenant_id=principal.tenant_id, user_id=principal.user_id, prompt=message
@@ -696,6 +803,8 @@ class ChatService:
                     user_id=principal.user_id,
                     conversation_id=conversation_id,
                     content=message,
+                    response_mode=response_mode,
+                    knowledge_base_ids=knowledge_base_ids,
                     request_id=request_id,
                     trace_id=trace_id,
                 )
@@ -703,11 +812,15 @@ class ChatService:
             lease.release()
             raise
         return PreparedChat(
+            principal=principal,
             tenant_id=principal.tenant_id,
             user_id=principal.user_id,
             conversation_id=conversation_id,
             assistant_message_id=assistant.id,
             prompt=message,
+            roles=principal.roles,
+            response_mode=response_mode,
+            knowledge_base_ids=tuple(knowledge_base_ids),
             locale=locale,
             policy=policy,
             request_id=request_id,
@@ -765,11 +878,15 @@ class ChatService:
             lease.release()
             raise
         return PreparedChat(
+            principal=principal,
             tenant_id=principal.tenant_id,
             user_id=principal.user_id,
             conversation_id=assistant.conversation_id,
             assistant_message_id=assistant.id,
             prompt=prompt,
+            roles=principal.roles,
+            response_mode=assistant.response_mode,
+            knowledge_base_ids=assistant.knowledge_base_ids,
             locale=locale,
             policy=policy,
             request_id=request_id,
@@ -783,6 +900,7 @@ class ChatService:
         content_parts: list[str] = []
         usage: GatewayUsage | None = None
         route: ModelRoute | None = None
+        retrieval: RetrievalResult | None = None
         with self._session_factory() as session:
             ChatRepository(session).mark_streaming(
                 tenant_id=prepared.tenant_id, message_id=prepared.assistant_message_id
@@ -795,8 +913,49 @@ class ChatService:
         )
         sequence += 1
         try:
+            model_prompt = prepared.prompt
+            if prepared.response_mode != "general":
+                retrieval = self._rag.retrieve(
+                    principal=prepared.principal,
+                    conversation_id=prepared.conversation_id,
+                    message_id=prepared.assistant_message_id,
+                    query=prepared.prompt,
+                    knowledge_base_ids=list(prepared.knowledge_base_ids),
+                    response_mode=prepared.response_mode,
+                )
+                yield self._event(
+                    prepared,
+                    sequence,
+                    "retrieval.completed",
+                    {
+                        "retrieval_run_id": str(retrieval.run_id),
+                        "config_version": retrieval.config_version,
+                        "status": retrieval.status,
+                        "abstention_reason": retrieval.abstention_reason,
+                        **retrieval.metrics,
+                    },
+                )
+                sequence += 1
+                if cancellation.is_set():
+                    raise ModelCancelled
+                if retrieval.status == "abstained" or prepared.response_mode == "search_only":
+                    async for policy_event in self._complete_policy_result(
+                        prepared=prepared,
+                        retrieval=retrieval,
+                        sequence=sequence,
+                    ):
+                        yield policy_event
+                    return
+                if retrieval.prompt is None:
+                    raise ModelProviderError(
+                        "RAG_PROMPT_MISSING",
+                        "The grounded prompt could not be constructed.",
+                        retryable=False,
+                    )
+                model_prompt = retrieval.prompt
+
             async for event in self._gateway.stream(
-                prompt=prepared.prompt,
+                prompt=model_prompt,
                 locale=prepared.locale,
                 policy=prepared.policy,
                 cancellation=cancellation,
@@ -809,10 +968,11 @@ class ChatService:
                 elif event.kind == "delta" and event.delta:
                     content_parts.append(event.delta)
                     route = event.route or route
-                    yield self._event(
-                        prepared, sequence, "message.delta", {"delta": event.delta}
-                    )
-                    sequence += 1
+                    if prepared.response_mode == "general":
+                        yield self._event(
+                            prepared, sequence, "message.delta", {"delta": event.delta}
+                        )
+                        sequence += 1
                 elif event.kind == "usage" and event.usage:
                     usage = event.usage
                     route = event.route or route
@@ -839,14 +999,52 @@ class ChatService:
                             retryable=False,
                         )
                     finish_reason = event.finish_reason or "stop"
+                    content = "".join(content_parts)
+                    citations: list[CitationView] = []
+                    abstention_reason: str | None = None
+                    if retrieval is not None:
+                        try:
+                            source_ids = self._rag.validate_model_citations(content, retrieval)
+                            citations = self._rag.persist_citations(
+                                principal=prepared.principal,
+                                message_id=prepared.assistant_message_id,
+                                result=retrieval,
+                                source_ids=source_ids,
+                            )
+                        except ApiError as exc:
+                            if exc.code != "CITATION_VALIDATION_FAILED":
+                                raise
+                            content = "资料不足，无法基于已授权知识回答。"
+                            finish_reason = "abstained"
+                            abstention_reason = "citation_validation_failed"
+                            self._rag.mark_abstained(
+                                tenant_id=prepared.tenant_id,
+                                run_id=retrieval.run_id,
+                                reason=abstention_reason,
+                            )
                     with self._session_factory() as session:
                         ChatRepository(session).complete(
                             prepared=prepared,
-                            content="".join(content_parts),
+                            content=content,
                             route=route,
                             usage=usage,
                             finish_reason=finish_reason,
+                            abstention_reason=abstention_reason,
                         )
+                    if prepared.response_mode != "general":
+                        for delta in self._response_chunks(content):
+                            yield self._event(
+                                prepared, sequence, "message.delta", {"delta": delta}
+                            )
+                            sequence += 1
+                        for citation in citations:
+                            yield self._event(
+                                prepared,
+                                sequence,
+                                "citation",
+                                self._citation_fields(citation),
+                            )
+                            sequence += 1
                     yield self._event(
                         prepared,
                         sequence,
@@ -856,6 +1054,7 @@ class ChatService:
                             "trace_id": prepared.trace_id,
                             "provider": route.provider_code,
                             "model": route.model_code,
+                            "abstention_reason": abstention_reason,
                         },
                     )
                     return
@@ -872,6 +1071,26 @@ class ChatService:
             with self._session_factory() as session:
                 ChatRepository(session).cancel(prepared=prepared)
             raise
+        except ApiError as error:
+            provider_error = ModelProviderError(
+                error.code,
+                error.detail,
+                retryable=error.retryable,
+                status_code=error.status,
+            )
+            with self._session_factory() as session:
+                ChatRepository(session).fail(prepared=prepared, error=provider_error)
+            yield self._event(
+                prepared,
+                sequence,
+                "error",
+                {
+                    "code": error.code,
+                    "message": error.detail,
+                    "retryable": error.retryable,
+                    "http_status": error.status,
+                },
+            )
         except ModelProviderError as error:
             with self._session_factory() as session:
                 ChatRepository(session).fail(prepared=prepared, error=error)
@@ -889,6 +1108,102 @@ class ChatService:
         finally:
             await self._cancellations.unregister(prepared.assistant_message_id)
             prepared.lease.release()
+
+    async def _complete_policy_result(
+        self,
+        *,
+        prepared: PreparedChat,
+        retrieval: RetrievalResult,
+        sequence: int,
+    ) -> AsyncGenerator[ChatEvent, None]:
+        citations: list[CitationView] = []
+        if retrieval.status == "abstained":
+            content = (
+                "该请求触发安全策略，无法处理。"
+                if retrieval.abstention_reason == "unsafe_query"
+                else "资料不足，无法基于已授权知识回答。"
+            )
+            finish_reason = "abstained"
+        else:
+            source_ids = [
+                source_id
+                for item in retrieval.selected
+                if (source_id := item.source_id) is not None
+            ]
+            citations = self._rag.persist_citations(
+                principal=prepared.principal,
+                message_id=prepared.assistant_message_id,
+                result=retrieval,
+                source_ids=source_ids,
+            )
+            lines = ["已找到以下已授权资料："]
+            lines.extend(
+                f"- {item.quote} [{item.source_id}]" for item in citations
+            )
+            content = "\n".join(lines)
+            finish_reason = "stop"
+        with self._session_factory() as session:
+            ChatRepository(session).complete_without_model(
+                prepared=prepared,
+                content=content,
+                finish_reason=finish_reason,
+                abstention_reason=retrieval.abstention_reason,
+            )
+        for delta in self._response_chunks(content):
+            yield self._event(prepared, sequence, "message.delta", {"delta": delta})
+            sequence += 1
+        for citation in citations:
+            yield self._event(
+                prepared, sequence, "citation", self._citation_fields(citation)
+            )
+            sequence += 1
+        yield self._event(
+            prepared,
+            sequence,
+            "usage",
+            {
+                "input_tokens": 0,
+                "output_tokens": estimate_tokens(content),
+                "cached_tokens": 0,
+                "estimated": False,
+                "amount": "0",
+                "currency": "USD",
+            },
+        )
+        sequence += 1
+        yield self._event(
+            prepared,
+            sequence,
+            "message.completed",
+            {
+                "finish_reason": finish_reason,
+                "trace_id": prepared.trace_id,
+                "provider": "retrieval",
+                "model": "none",
+                "abstention_reason": retrieval.abstention_reason,
+            },
+        )
+
+    @staticmethod
+    def _response_chunks(content: str) -> list[str]:
+        return [content[index : index + 64] for index in range(0, len(content), 64)] or [""]
+
+    @staticmethod
+    def _citation_fields(citation: CitationView) -> dict[str, Any]:
+        return {
+            "citation_id": str(citation.id),
+            "ordinal": citation.ordinal,
+            "source_id": citation.source_id,
+            "document_id": str(citation.document_id),
+            "document_version_id": str(citation.document_version_id),
+            "document_title": citation.document_title,
+            "version": citation.version_no,
+            "page_from": citation.page_from,
+            "page_to": citation.page_to,
+            "section_path": list(citation.section_path),
+            "quote": citation.quote,
+            "relevance_score": citation.relevance_score,
+        }
 
     async def request_cancel(
         self,
@@ -971,6 +1286,12 @@ def _message_record(row: MessageRow) -> MessageRecord:
         output_tokens=row.output_tokens,
         cached_tokens=row.cached_tokens,
         error_code=row.error_code,
+        response_mode=row.response_mode,
+        knowledge_base_ids=tuple(UUID(value) for value in row.knowledge_base_ids),
+        rag_config_id=row.rag_config_id,
+        retrieval_run_id=row.retrieval_run_id,
+        prompt_version=row.prompt_version,
+        abstention_reason=row.abstention_reason,
         created_at=row.created_at,
         updated_at=row.updated_at,
         completed_at=row.completed_at,

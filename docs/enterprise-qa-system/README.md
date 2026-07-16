@@ -1,7 +1,7 @@
 # 企业级大模型问答系统：项目文档包
 
-> 文档版本：v1.1  
-> 基线日期：2026-07-15  
+> 文档版本：v1.4-s4  
+> 基线日期：2026-07-16  
 > 目标读者：产品经理、架构师、后端/前端/算法/测试/DevOps 工程师、安全与运维人员
 
 ## 1. 这套文档解决什么问题
@@ -50,6 +50,8 @@ flowchart LR
 | [S0 阶段基线包](s0/README.md) | 发现、数据、黄金集、威胁、容量、风险、Gate 与决策证据 | 产品/架构/安全/测试 |
 | [S1 工程证据包](s1/README.md) | 工程骨架、OIDC/BFF、租户、会话、迁移、CI、测试、风险与 Gate | 全团队 |
 | [S2 模型与流式聊天证据包](s2/README.md) | Model Gateway、Adapter、SSE、取消/重试、用量成本、测试与 Gate | 全团队 |
+| [S3 安全文档摄取证据包](s3/README.md) | 隔离上传、解析分块、版本、ACL 与调试检索 | 全团队 |
+| [S4 可溯源 RAG 证据包](s4/README.md) | Hybrid retrieval、rerank、grounding、引用、拒答、反馈与评测 | 全团队 |
 | [ADR 目录](adr/README.md) | 不可变的重要架构和安全决策 | 架构/相关 Owner |
 | [00-项目章程与范围](00-project-charter-and-scope.md) | 立项、边界、排期、预算假设、RACI、风险 | 项目经理/产品/架构 |
 | [01-需求与应用场景](01-requirements-and-use-cases.md) | 角色、用户故事、功能与非功能需求、验收场景 | 产品/测试 |
@@ -87,6 +89,10 @@ flowchart LR
 ## S3 阶段补充
 
 [S3 安全文档摄取证据包](s3/README.md) 是当前实现基线，包含需求、接口/字段、双 bucket 安全边界、四格式解析、结构分块、Worker/Outbox、不可变版本原子发布、ACL 前置检索、开发教学、测试、风险、Gate、决策日志和机器清单。S3 只提供调试检索，不提供聊天 RAG、引用或拒答质量承诺。
+
+## S4 阶段补充
+
+[S4 可溯源 RAG 证据包](s4/README.md) 覆盖 ACL-first pgvector/FTS、RRF/rerank、context packing、证据门槛、grounded 输出缓冲与 Source ID 校验、引用再鉴权、反馈、20 条合成评测、部署参数、风险和 Gate。S4 工程基线不替代真实业务 UAT、供应商/数据审批、中文检索、性能、Kubernetes 或 DR 证据。
 
 ## 6. Definition of Success
 

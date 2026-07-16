@@ -160,10 +160,27 @@ class DeterministicFakeAdapter:
             "[blocked]",
         ]:
             clean_prompt = clean_prompt.removeprefix(directive).strip()
-        answer = (
-            "这是 S3 通用模型演示回答，知识检索尚未接入聊天或引用。"
-            f"你输入的是：{clean_prompt or '空白演示问题'}"
-        )
+        if "S4_GROUNDED_CONTEXT_JSON\n" in clean_prompt:
+            context_text = clean_prompt.split("S4_GROUNDED_CONTEXT_JSON\n", 1)[1].split(
+                "\nEND_S4_GROUNDED_CONTEXT_JSON", 1
+            )[0]
+            try:
+                context = json.loads(context_text)
+                source = context["sources"][0]
+                source_id = str(source["source_id"])
+                evidence = " ".join(str(source["content"]).split())[:600]
+                answer = (
+                    "合成错误引用 [SRC-999]"
+                    if str(context.get("question", "")).startswith("[bad-citation]")
+                    else f"根据已授权资料：{evidence} [{source_id}]"
+                )
+            except (KeyError, IndexError, TypeError, ValueError):
+                answer = "资料不足，无法基于已授权知识回答。"
+        else:
+            answer = (
+                "这是 S4 通用模型演示回答，未使用企业知识或引用。"
+                f"你输入的是：{clean_prompt or '空白演示问题'}"
+            )
         chunks = [answer[index : index + 9] for index in range(0, len(answer), 9)]
         for index, chunk in enumerate(chunks):
             if cancellation.is_set():

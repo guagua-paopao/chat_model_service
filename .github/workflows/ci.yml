@@ -16,10 +16,12 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12", cache: pip}
       - run: python -m pip install --upgrade pip && python -m pip install -r requirements.lock && python -m pip install -e ".[dev]"
-      - run: ruff check apps/api/src apps/api/scripts apps/fake-idp/src tests
-      - run: mypy apps/api/src apps/fake-idp/src
+      - run: ruff check apps/api/src apps/api/scripts apps/fake-idp/src scripts tests
+      - run: mypy --strict apps/api/src
       - run: pytest -W error --cov=qa_api --cov=fake_idp --cov-fail-under=85 --cov-report=xml
         env: {PYTHONPATH: "apps/api/src:apps/fake-idp/src"}
+      - run: python scripts/evaluate_s4.py
+      - run: python scripts/validate_contracts.py
       - name: Migration round-trip
         run: |
           export QA_DATABASE_URL=sqlite+pysqlite:///./migration-check.db

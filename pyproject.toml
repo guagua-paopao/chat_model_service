@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "enterprise-qa-system"
 version = "0.1.0"
-description = "Enterprise multi-tenant QA system - S3 secure document ingestion"
+description = "Enterprise multi-tenant QA system - S4 grounded RAG"
 requires-python = ">=3.12,<3.14"
 dependencies = [
   "alembic==1.18.5",
@@ -16,6 +16,7 @@ dependencies = [
   "httpx==0.28.1",
   "psycopg[binary]>=3.2,<4",
   "pydantic==2.13.4",
+  "pgvector==0.5.0",
   "pypdf==6.14.2",
   "PyJWT[crypto]==2.13.0",
   "SQLAlchemy==2.0.51",

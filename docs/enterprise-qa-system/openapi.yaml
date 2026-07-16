@@ -1,10 +1,11 @@
 openapi: 3.1.0
 info:
   title: Enterprise QA System API
-  version: 1.3.0-s3
+  version: 1.4.0-s4
   description: |
-    企业知识问答系统的核心契约骨架。租户从认证上下文解析，客户端不得自报 tenant_id。
-    流式问答返回 text/event-stream；SSE 事件结构见外部文档 04-api-contracts.md。
+    企业知识问答系统的核心契约。租户从已验证的身份上下文解析，客户端不得自报 tenant_id。
+    S4 知识问答在 ACL 过滤后执行混合检索与重排，并保存检索、提示词、模型和引用快照。
+    流式知识回答先缓冲并验证引用，再向客户端输出；SSE 事件结构见 S4 API 设计文档。
 servers:
   - url: https://qa.example.com/api/v1
     description: Production placeholder
@@ -178,7 +179,10 @@ paths:
       description: |
         With stream=true and Accept=text/event-stream, the body is an SSE event stream.
         Errors after stream establishment are sent as an `error` event.
-        S2 only accepts response_mode=general and returns no enterprise citations.
+        Knowledge modes require at least one knowledge_base_id. The server emits
+        `message.started`, `retrieval.completed`, validated `message.delta`, zero or
+        more `citation`, `usage`, and `message.completed` events. Evidence or safety
+        abstentions do not call the model. General mode does not access enterprise knowledge.
       operationId: createChatCompletion
       security:
         - oauth2: [qa:ask]
@@ -269,6 +273,24 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/Feedback'}
+        '404': {$ref: '#/components/responses/NotFound'}
+  /messages/{message_id}/citations/{citation_id}:
+    get:
+      tags: [Retrieval]
+      summary: Reauthorize and return a controlled citation preview
+      description: The source document ACL is evaluated again on every request; no raw object URL is exposed.
+      operationId: getCitation
+      security:
+        - oauth2: [qa:ask]
+      parameters:
+        - $ref: '#/components/parameters/MessageId'
+        - $ref: '#/components/parameters/CitationId'
+      responses:
+        '200':
+          description: Authorized immutable citation snapshot
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/CitationDetail'}
         '404': {$ref: '#/components/responses/NotFound'}
   /knowledge-bases:
     post:
@@ -463,7 +485,8 @@ paths:
   /retrieval/search:
     post:
       tags: [Retrieval]
-      summary: Debug search within the actor's authorized scope
+      summary: Legacy S3 vector-search diagnostic within the actor's authorized scope
+      description: Operational diagnostic only; grounded chat uses the internal S4 hybrid retrieval pipeline.
       operationId: searchKnowledge
       security:
         - oauth2: [qa:knowledge:read]
@@ -538,6 +561,11 @@ components:
       schema: {$ref: '#/components/schemas/Uuid'}
     MessageId:
       name: message_id
+      in: path
+      required: true
+      schema: {$ref: '#/components/schemas/Uuid'}
+    CitationId:
+      name: citation_id
       in: path
       required: true
       schema: {$ref: '#/components/schemas/Uuid'}
@@ -692,7 +720,7 @@ components:
         usage: {$ref: '#/components/schemas/Usage'}
     Message:
       type: object
-      required: [id, conversation_id, role, content, status, sequence_no, created_at]
+      required: [id, conversation_id, role, content, status, sequence_no, created_at, response_mode, knowledge_base_ids, citations]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         conversation_id: {$ref: '#/components/schemas/Uuid'}
@@ -701,7 +729,7 @@ components:
         content_format: {type: string, enum: [text, markdown, json], default: markdown}
         status: {type: string, enum: [pending, streaming, completed, failed, cancelled, blocked]}
         sequence_no: {type: integer, minimum: 1}
-        finish_reason: {type: [string, 'null'], enum: [stop, length, cancelled, content_filter, error, null]}
+        finish_reason: {type: [string, 'null'], enum: [stop, length, cancelled, content_filter, error, abstained, null]}
         provider: {type: [string, 'null']}
         model: {type: [string, 'null']}
         error_code: {type: [string, 'null']}
@@ -710,6 +738,19 @@ components:
           oneOf:
             - $ref: '#/components/schemas/Timestamp'
             - type: 'null'
+        response_mode: {type: string, enum: [general, grounded_answer, search_only], default: general}
+        knowledge_base_ids:
+          type: array
+          items: {$ref: '#/components/schemas/Uuid'}
+        retrieval_run_id:
+          oneOf:
+            - $ref: '#/components/schemas/Uuid'
+            - type: 'null'
+        prompt_version: {type: [string, 'null']}
+        abstention_reason: {type: [string, 'null']}
+        citations:
+          type: array
+          items: {$ref: '#/components/schemas/Citation'}
     RetryRequest:
       type: object
       additionalProperties: false
@@ -718,10 +759,11 @@ components:
         model_policy: {type: string, enum: [fast, balanced, quality], default: balanced}
     Citation:
       type: object
-      required: [id, ordinal, document_id, document_version_id, document_title, quote]
+      required: [id, ordinal, source_id, document_id, document_version_id, document_title, version, section_path, quote, relevance_score]
       properties:
         id: {$ref: '#/components/schemas/Uuid'}
         ordinal: {type: integer, minimum: 1}
+        source_id: {type: string, pattern: '^SRC-[0-9]{3}$'}
         document_id: {$ref: '#/components/schemas/Uuid'}
         document_version_id: {$ref: '#/components/schemas/Uuid'}
         document_title: {type: string, maxLength: 500}
@@ -732,7 +774,16 @@ components:
           type: array
           items: {type: string}
         quote: {type: string, maxLength: 1200}
-        relevance_score: {type: [number, 'null']}
+        relevance_score: {type: number, minimum: 0, maximum: 1}
+    CitationDetail:
+      allOf:
+        - $ref: '#/components/schemas/Citation'
+        - type: object
+          required: [message_id, access_checked_at, source_url]
+          properties:
+            message_id: {$ref: '#/components/schemas/Uuid'}
+            access_checked_at: {$ref: '#/components/schemas/Timestamp'}
+            source_url: {type: 'null'}
     Usage:
       type: object
       required: [input_tokens, output_tokens, estimated]
@@ -757,11 +808,13 @@ components:
       allOf:
         - $ref: '#/components/schemas/FeedbackRequest'
         - type: object
-          required: [id, message_id, created_at]
+          required: [id, message_id, snapshot, created_at, updated_at]
           properties:
             id: {$ref: '#/components/schemas/Uuid'}
             message_id: {$ref: '#/components/schemas/Uuid'}
+            snapshot: {type: object, additionalProperties: true}
             created_at: {$ref: '#/components/schemas/Timestamp'}
+            updated_at: {$ref: '#/components/schemas/Timestamp'}
     KnowledgeBaseCreate:
       type: object
       additionalProperties: false

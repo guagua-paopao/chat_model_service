@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const UUID = "[0-9a-f-]{36}";
 const ALLOWED_PATH = new RegExp(
-  `^(me|models|conversations(?:/${UUID})?|chat/completions|messages/${UUID}/(?:cancel|retry)|knowledge-bases(?:/${UUID}/documents)?|documents/${UUID}(?:/versions|/upload-complete)?|ingestion-jobs/${UUID}(?:/retry)?|retrieval/search|uploads/${UUID}/content)$`,
+  `^(me|models|conversations(?:/${UUID})?|chat/completions|messages/${UUID}/(?:cancel|retry|feedback|citations/${UUID})|knowledge-bases(?:/${UUID}/documents)?|documents/${UUID}(?:/versions|/upload-complete)?|ingestion-jobs/${UUID}(?:/retry)?|retrieval/search|uploads/${UUID}/content)$`,
 );
 const SAFE_METHODS = new Set(["GET", "HEAD"]);
 

@@ -4,7 +4,7 @@ api:
   replicaCount: 2
   image:
     repository: registry.example.invalid/enterprise-qa-api
-    tag: "0.3.0-s3"
+    tag: "0.4.0-s4"
     digest: ""
   resources:
     requests: {cpu: 100m, memory: 256Mi}
@@ -14,7 +14,7 @@ worker:
   replicaCount: 1
   image:
     repository: registry.example.invalid/enterprise-qa-worker
-    tag: "0.3.0-s3"
+    tag: "0.4.0-s4"
     digest: ""
   resources:
     requests: {cpu: 50m, memory: 128Mi}
@@ -24,7 +24,7 @@ web:
   replicaCount: 2
   image:
     repository: registry.example.invalid/enterprise-qa-web
-    tag: "0.3.0-s3"
+    tag: "0.4.0-s4"
     digest: ""
   resources:
     requests: {cpu: 50m, memory: 128Mi}
@@ -75,6 +75,20 @@ config:
   embeddingProviderBaseUrl: https://approved-model-gateway.example.invalid/v1
   embeddingProviderModel: approved-embedding-model
   embeddingDimensions: 1536
+  ragEnabled: true
+  retrievalVectorCandidates: 40
+  retrievalLexicalCandidates: 40
+  retrievalRerankCandidates: 20
+  retrievalFinalK: 6
+  retrievalRrfK: 60
+  retrievalContextMaxTokens: 1600
+  retrievalMinRelevance: 0.35
+  retrievalMinQueryCoverage: 0.35
+  citationMaxQuoteChars: 1200
+  rerankerProviderEnabled: true
+  rerankerProviderBaseUrl: https://approved-model-gateway.example.invalid/v1
+  rerankerProviderModel: approved-reranker-model
+  rerankerTimeoutSeconds: 20
 
 externalSecrets:
   secretName: enterprise-qa-runtime
@@ -84,6 +98,7 @@ externalSecrets:
   objectStoreAccessKeyKey: object-store-access-key
   objectStoreSecretKeyKey: object-store-secret-key
   embeddingApiKeyKey: embedding-api-key
+  rerankerApiKeyKey: reranker-api-key
 
 serviceAccount:
   create: true

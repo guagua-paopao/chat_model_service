@@ -14,6 +14,7 @@ YAML_FILES = [
     ROOT / "docs" / "enterprise-qa-system" / "s1" / "manifest.yaml",
     ROOT / "docs" / "enterprise-qa-system" / "s2" / "manifest.yaml",
     ROOT / "docs" / "enterprise-qa-system" / "s3" / "manifest.yaml",
+    ROOT / "docs" / "enterprise-qa-system" / "s4" / "manifest.yaml",
     ROOT / "infra" / "compose" / "compose.yaml",
     ROOT / "infra" / "helm" / "qa-system" / "Chart.yaml",
     ROOT / "infra" / "helm" / "qa-system" / "values.yaml",
@@ -66,10 +67,12 @@ def main() -> int:
         "/ingestion-jobs/{job_id}",
         "/ingestion-jobs/{job_id}/retry",
         "/retrieval/search",
+        "/messages/{message_id}/feedback",
+        "/messages/{message_id}/citations/{citation_id}",
     }
     missing = required_paths - set(openapi.get("paths", {}))
     if missing:
-        raise ValueError(f"missing S3 paths: {sorted(missing)}")
+        raise ValueError(f"missing S4 paths: {sorted(missing)}")
     print(
         f"contract validation passed: yaml_files={len(YAML_FILES)} "
         f"openapi_refs={len(references)} paths={len(openapi['paths'])}"

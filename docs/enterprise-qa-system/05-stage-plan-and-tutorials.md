@@ -437,3 +437,9 @@ NFR 全部、ADM-005/006、[08](08-testing-and-evaluation.md)、[10](10-observab
 S3 已按本计划完成合成开发基线，详细实现、接口、教学、风险和 Gate 以 [S3 证据包](s3/README.md) 为准。相对原计划的显式选择：任务真相源采用 PostgreSQL lease + outbox，而非提前引入 Celery broker；S3 vector 暂存 JSON 且检索只做 ACL 后词项调试，pgvector/hybrid 正式检索留到 S4；生产扫描强制 ClamAV，本地签名 scanner 不可作为上线控制。
 
 最终证据为 45 tests、86% 总覆盖率、Ruff/Mypy/ESLint/迁移/契约/依赖审计通过，API/Worker/Web 干净镜像构建通过，且 PostgreSQL/Redis/MinIO/OIDC/浏览器签名直传/Worker/ACL 调试检索的隔离 Compose smoke 通过。Helm CLI/集群安装、真实 S3/ClamAV/Embedding、真实文档 UAT、多 Worker 压测仍是生产阻断。
+
+## S4 实施完成记录（2026-07-16）
+
+S4 已按本计划完成合成开发基线，详细需求、检索/安全、API/数据/Prompt、教学、评测、风险和 Gate 以 [S4 证据包](s4/README.md) 为准。实现选择包括：两个召回分支都在 tenant/current/published/ACL 安全集合内执行；weighted RRF 后调用可替换 reranker；grounded 内容在 Source ID 校验前不流出；证据不足和 direct injection 均不调用模型；citation 保存不可变快照且每次查看按当前 ACL 再鉴权。
+
+最终工程回归为 58 tests；20 条合成链路的 Recall@10、引用精度/完整性、groundedness proxy、拒答 precision/recall 均为 1.0，无权限秘密泄漏为 0。精确 pgvector 只建立正确性基线，不代表目标规模性能；中文 tokenizer、真实 Provider、claim-level evaluator、red-team、共享状态、Kubernetes 和 DR 继续阻断生产。

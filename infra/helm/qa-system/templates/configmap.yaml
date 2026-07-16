@@ -54,3 +54,18 @@ data:
   QA_EMBEDDING_PROVIDER_BASE_URL: {{ .Values.config.embeddingProviderBaseUrl | quote }}
   QA_EMBEDDING_PROVIDER_MODEL: {{ .Values.config.embeddingProviderModel | quote }}
   QA_EMBEDDING_DIMENSIONS: {{ .Values.config.embeddingDimensions | quote }}
+  QA_RAG_ENABLED: {{ .Values.config.ragEnabled | quote }}
+  QA_RETRIEVAL_VECTOR_CANDIDATES: {{ .Values.config.retrievalVectorCandidates | quote }}
+  QA_RETRIEVAL_LEXICAL_CANDIDATES: {{ .Values.config.retrievalLexicalCandidates | quote }}
+  QA_RETRIEVAL_RERANK_CANDIDATES: {{ .Values.config.retrievalRerankCandidates | quote }}
+  QA_RETRIEVAL_FINAL_K: {{ .Values.config.retrievalFinalK | quote }}
+  QA_RETRIEVAL_RRF_K: {{ .Values.config.retrievalRrfK | quote }}
+  QA_RETRIEVAL_CONTEXT_MAX_TOKENS: {{ .Values.config.retrievalContextMaxTokens | quote }}
+  QA_RETRIEVAL_MIN_RELEVANCE: {{ .Values.config.retrievalMinRelevance | quote }}
+  QA_RETRIEVAL_MIN_QUERY_COVERAGE: {{ .Values.config.retrievalMinQueryCoverage | quote }}
+  QA_CITATION_MAX_QUOTE_CHARS: {{ .Values.config.citationMaxQuoteChars | quote }}
+  QA_FAKE_RERANKER_ENABLED: "false"
+  QA_RERANKER_PROVIDER_ENABLED: {{ .Values.config.rerankerProviderEnabled | quote }}
+  QA_RERANKER_PROVIDER_BASE_URL: {{ .Values.config.rerankerProviderBaseUrl | quote }}
+  QA_RERANKER_PROVIDER_MODEL: {{ .Values.config.rerankerProviderModel | quote }}
+  QA_RERANKER_TIMEOUT_SECONDS: {{ .Values.config.rerankerTimeoutSeconds | quote }}
