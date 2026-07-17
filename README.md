@@ -1,4 +1,4 @@
-# 企业级大模型问答系统建设计划
+# 大模型问答系统建设计划
 
 完整项目文档位于 [docs/enterprise-qa-system/README.md](docs/enterprise-qa-system/README.md)。
 
