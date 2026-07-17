@@ -38,7 +38,7 @@ Copy-Item .env.example .env
 
 完整重置
 ```powershell
-Set-Location D:\codex\model
+Set-Location <文件路径>
 
 $env:DOCKER_CONFIG = (Resolve-Path ".local\docker-config").Path
 
@@ -60,7 +60,7 @@ docker compose `
 
 日常启动
 ```powershell
-Set-Location D:\codex\model
+Set-Location <文件路径>
 $env:DOCKER_CONFIG = (Resolve-Path ".local\docker-config").Path
 
 docker compose `
