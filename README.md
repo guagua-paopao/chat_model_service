@@ -36,6 +36,40 @@ Copy-Item .env.example .env
 .\scripts\dev.ps1
 ```
 
+完整重置
+```powershell
+Set-Location D:\codex\model
+
+$env:DOCKER_CONFIG = (Resolve-Path ".local\docker-config").Path
+
+docker compose `
+  --env-file .env `
+  -f infra/compose/compose.yaml `
+  -f .local/compose.deepseek.yaml `
+  down -v --remove-orphans
+```
+
+创建
+```powershell
+docker compose `
+  --env-file .env `
+  -f infra/compose/compose.yaml `
+  -f .local/compose.deepseek.yaml `
+  up -d --build
+```
+
+日常启动
+```powershell
+Set-Location D:\codex\model
+$env:DOCKER_CONFIG = (Resolve-Path ".local\docker-config").Path
+
+docker compose `
+  --env-file .env `
+  -f infra/compose/compose.yaml `
+  -f .local/compose.deepseek.yaml `
+  up -d
+```
+
 若本机策略禁止执行 `.ps1`，可对单次子进程使用 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\check.ps1 -OnlineAudit`；这不会修改系统执行策略。
 
 另开终端生成 30 分钟本地开发令牌并验证可信租户上下文：
